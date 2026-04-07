@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Navi — AI Screen Guide for Windows</title>
+<meta name="description" content="Ask Navi anything about your screen. It sees what you see, flies to the right button, and tells you exactly what to do.">
+<meta property="og:title" content="Navi — AI Screen Guide">
+<meta property="og:description" content="Ask anything about your screen. Navi flies to the answer.">
+<meta property="og:image" content="og.png">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --accent: #c8f04a;
+    --accent-glow: rgba(200,240,74,0.3);
+    --bg: #0e0e0e;
+    --surface: rgba(255,255,255,0.04);
+    --border: rgba(255,255,255,0.08);
+    --text: #e8e8e8;
+    --text-dim: #666;
+  }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0;
+    padding: 18px 40px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(14,14,14,0.8);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+    z-index: 100;
+  }
+  .nav-logo { font-size: 20px; font-weight: 700; color: var(--accent); letter-spacing: -0.5px; }
+  .nav-links { display: flex; gap: 32px; }
+  .nav-links a { color: var(--text-dim); text-decoration: none; font-size: 14px; transition: color .2s; }
+  .nav-links a:hover { color: var(--text); }
+  .nav-cta {
+    background: var(--accent); color: #000;
+    padding: 8px 20px; border-radius: 8px;
+    font-size: 13px; font-weight: 600; text-decoration: none;
+    transition: opacity .2s;
+  }
+  .nav-cta:hover { opacity: .85; }
+
+  /* ── HERO ── */
+  .hero {
+    min-height: 100vh;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    text-align: center;
+    padding: 120px 24px 80px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero::before {
+    content: '';
+    position: absolute;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(200,240,74,0.06) 0%, transparent 70%);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(200,240,74,0.1);
+    border: 1px solid rgba(200,240,74,0.25);
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 12px; color: var(--accent);
+    letter-spacing: .05em;
+    margin-bottom: 28px;
+  }
+
+  h1 {
+    font-size: clamp(42px, 7vw, 80px);
+    font-weight: 800;
+    letter-spacing: -2px;
+    line-height: 1.05;
+    margin-bottom: 24px;
+    max-width: 800px;
+  }
+  h1 span { color: var(--accent); }
+
+  .hero-sub {
+    font-size: clamp(16px, 2vw, 20px);
+    color: var(--text-dim);
+    max-width: 520px;
+    margin-bottom: 44px;
+    line-height: 1.7;
+  }
+
+  .hero-btns { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; justify-content: center; }
+
+  .btn-main {
+    background: var(--accent); color: #000;
+    padding: 14px 32px; border-radius: 12px;
+    font-size: 15px; font-weight: 700; text-decoration: none;
+    display: flex; align-items: center; gap: 8px;
+    transition: opacity .2s, transform .15s;
+    box-shadow: 0 0 40px rgba(200,240,74,0.2);
+  }
+  .btn-main:hover { opacity: .9; transform: translateY(-1px); }
+
+  .btn-ghost {
+    border: 1px solid var(--border); color: var(--text-dim);
+    padding: 14px 28px; border-radius: 12px;
+    font-size: 15px; text-decoration: none;
+    transition: border-color .2s, color .2s;
+  }
+  .btn-ghost:hover { border-color: rgba(255,255,255,0.2); color: var(--text); }
+
+  .hero-note { font-size: 12px; color: #444; margin-top: 16px; }
+
+  /* ── DEMO ANIMATION ── */
+  .demo-wrap {
+    margin: 80px auto 0;
+    max-width: 860px; width: 100%;
+    background: rgba(255,255,255,0.02);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .demo-bar {
+    background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 16px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .demo-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .demo-dot:nth-child(1) { background: #ff5f57; }
+  .demo-dot:nth-child(2) { background: #febc2e; }
+  .demo-dot:nth-child(3) { background: #28c840; }
+  .demo-title { font-size: 12px; color: #444; margin-left: auto; margin-right: auto; }
+
+  .demo-screen {
+    background: #1a1a2e;
+    height: 420px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  /* Simulated app UI in demo */
+  .fake-app {
+    position: absolute; inset: 20px;
+    background: #16213e;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.06);
+    display: flex; flex-direction: column;
+  }
+  .fake-toolbar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 16px;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .fake-menu { font-size: 12px; color: #888; padding: 4px 10px; border-radius: 5px; cursor: default; }
+  .fake-menu.highlight { background: rgba(200,240,74,0.15); color: var(--accent); }
+  .fake-body { flex: 1; padding: 20px; display: grid; grid-template-columns: 200px 1fr; gap: 12px; }
+  .fake-sidebar { background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.04); }
+  .fake-main { background: rgba(255,255,255,0.02); border-radius: 8px; border: 1px solid rgba(255,255,255,0.04); }
+
+  /* The Navi buddy in demo */
+  .demo-buddy {
+    position: absolute;
+    width: 42px; height: 42px;
+    z-index: 10;
+    animation: buddy-fly 4s cubic-bezier(0.22,1,0.36,1) infinite;
+  }
+  .demo-buddy-face {
+    width: 100%; height: 100%;
+    background: var(--accent);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    box-shadow: 0 0 20px var(--accent-glow);
+    animation: buddy-glow 2s ease-in-out infinite;
+  }
+
+  @keyframes buddy-fly {
+    0%   { bottom: 30px; right: 40px; }
+    30%  { bottom: 30px; right: 40px; }
+    65%  { bottom: 330px; right: 630px; }
+    85%  { bottom: 330px; right: 630px; }
+    100% { bottom: 30px; right: 40px; }
+  }
+  @keyframes buddy-glow {
+    0%,100% { box-shadow: 0 0 20px rgba(200,240,74,.4); }
+    50%      { box-shadow: 0 0 35px rgba(200,240,74,.7); }
+  }
+
+  .demo-label {
+    position: absolute;
+    background: var(--accent); color: #000;
+    font-size: 11px; font-weight: 600;
+    padding: 3px 10px; border-radius: 20px;
+    white-space: nowrap;
+    z-index: 11;
+    animation: label-appear 4s ease-in-out infinite;
+  }
+  @keyframes label-appear {
+    0%,55%  { opacity: 0; bottom: 372px; right: 595px; }
+    65%,80% { opacity: 1; bottom: 372px; right: 595px; }
+    90%,100%{ opacity: 0; bottom: 372px; right: 595px; }
+  }
+
+  .demo-bubble {
+    position: absolute;
+    background: rgba(18,18,18,0.95);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 12px;
+    padding: 12px 14px;
+    font-size: 11px; line-height: 1.6;
+    max-width: 220px;
+    z-index: 12;
+    backdrop-filter: blur(20px);
+    animation: bubble-appear 4s ease-in-out infinite;
+  }
+  .demo-bubble-tag { font-size: 8px; color: var(--accent); letter-spacing: .1em; text-transform: uppercase; margin-bottom: 4px; }
+  @keyframes bubble-appear {
+    0%,60%  { opacity: 0; bottom: 200px; right: 30px; transform: scale(0.95) translateY(4px); }
+    70%,82% { opacity: 1; bottom: 200px; right: 30px; transform: scale(1) translateY(0); }
+    92%,100%{ opacity: 0; bottom: 200px; right: 30px; transform: scale(0.95) translateY(4px); }
+  }
+
+  /* Status bar */
+  .demo-status {
+    position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+    background: rgba(18,18,18,0.9);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 30px;
+    padding: 7px 18px;
+    font-size: 11px; color: #666;
+    display: flex; align-items: center; gap: 8px;
+    white-space: nowrap;
+    z-index: 9;
+  }
+  .demo-status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 5px var(--accent); }
+
+  /* ── HOW IT WORKS ── */
+  .section { padding: 100px 24px; max-width: 1100px; margin: 0 auto; }
+
+  .section-label {
+    font-size: 11px; color: var(--accent); letter-spacing: .15em;
+    text-transform: uppercase; font-weight: 600;
+    margin-bottom: 16px; text-align: center;
+  }
+
+  h2 {
+    font-size: clamp(28px, 4vw, 48px);
+    font-weight: 800; letter-spacing: -1px;
+    text-align: center; margin-bottom: 60px;
+  }
+
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
+
+  @media (max-width: 700px) { .steps { grid-template-columns: 1fr; } }
+
+  .step-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    transition: border-color .2s;
+  }
+  .step-card:hover { border-color: rgba(200,240,74,0.25); }
+  .step-icon {
+    width: 44px; height: 44px;
+    background: rgba(200,240,74,0.1);
+    border: 1px solid rgba(200,240,74,0.25);
+    border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; margin-bottom: 16px;
+  }
+  .step-card h3 { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+  .step-card p  { font-size: 13px; color: var(--text-dim); line-height: 1.65; }
+
+  /* ── FEATURES ── */
+  .features { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  @media (max-width: 700px) { .features { grid-template-columns: 1fr; } }
+
+  .feature {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    display: flex; gap: 14px; align-items: flex-start;
+  }
+  .feature-icon { font-size: 22px; flex-shrink: 0; margin-top: 2px; }
+  .feature h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .feature p  { font-size: 12px; color: var(--text-dim); line-height: 1.6; }
+
+  /* ── REQUIREMENTS ── */
+  .req-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; max-width: 600px; margin: 0 auto; }
+  @media (max-width: 600px) { .req-grid { grid-template-columns: 1fr; } }
+
+  .req-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 22px;
+    text-align: center;
+  }
+  .req-card .req-icon { font-size: 28px; margin-bottom: 10px; }
+  .req-card h4 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+  .req-card p  { font-size: 12px; color: var(--text-dim); }
+  .req-card a  { color: var(--accent); text-decoration: none; }
+  .req-card a:hover { text-decoration: underline; }
+
+  /* ── CTA ── */
+  .cta-section {
+    text-align: center;
+    padding: 100px 24px;
+    position: relative;
+  }
+  .cta-section::before {
+    content: '';
+    position: absolute;
+    width: 500px; height: 300px;
+    background: radial-gradient(ellipse, rgba(200,240,74,0.06) 0%, transparent 70%);
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  .cta-section h2 { margin-bottom: 16px; }
+  .cta-section p  { color: var(--text-dim); margin-bottom: 36px; font-size: 16px; }
+
+  /* ── FOOTER ── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 32px 40px;
+    display: flex; align-items: center; justify-content: space-between;
+    flex-wrap: wrap; gap: 16px;
+  }
+  .footer-logo { font-size: 16px; font-weight: 700; color: var(--accent); }
+  footer p { font-size: 12px; color: #444; }
+  .footer-links { display: flex; gap: 24px; }
+  .footer-links a { color: #444; text-decoration: none; font-size: 12px; transition: color .2s; }
+  .footer-links a:hover { color: var(--text); }
+
+  /* ── DIVIDER ── */
+  hr { border: none; border-top: 1px solid var(--border); }
+
+  /* ── KB SHORTCUT ── */
+  kbd {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.12);
+    border-radius: 5px;
+    padding: 2px 7px;
+    font-family: 'Consolas', monospace;
+    font-size: 12px;
+    color: #bbb;
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="nav-logo">✦ Navi</div>
+  <div class="nav-links">
+    <a href="#how">How it works</a>
+    <a href="#features">Features</a>
+    <a href="#requirements">Requirements</a>
+  </div>
+  <a class="nav-cta" href="https://github.com/benryanx/navi/releases/latest">Download for Windows</a>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="badge">✦ Free &amp; runs 100% locally</div>
+  <h1>Your AI guide<br>lives on your <span>screen</span></h1>
+  <p class="hero-sub">Ask Navi anything about what's on your screen. It sees what you see, flies to the right button, and tells you exactly what to do.</p>
+
+  <div class="hero-btns">
+    <a class="btn-main" href="https://github.com/benryanx/navi/releases/latest">
+      ⬇ Download for Windows
+    </a>
+    <a class="btn-ghost" href="https://github.com/benryanx/navi">View on GitHub</a>
+  </div>
+  <p class="hero-note">Windows 10/11 · x64 · Free · Requires Ollama</p>
+
+  <!-- Animated demo -->
+  <div class="demo-wrap">
+    <div class="demo-bar">
+      <div class="demo-dot"></div>
+      <div class="demo-dot"></div>
+      <div class="demo-dot"></div>
+      <span class="demo-title">Navi — AI Screen Guide</span>
+    </div>
+    <div class="demo-screen">
+      <!-- Fake app UI -->
+      <div class="fake-app">
+        <div class="fake-toolbar">
+          <div class="fake-menu highlight">File</div>
+          <div class="fake-menu">Edit</div>
+          <div class="fake-menu">View</div>
+          <div class="fake-menu">Help</div>
+        </div>
+        <div class="fake-body">
+          <div class="fake-sidebar"></div>
+          <div class="fake-main"></div>
+        </div>
+      </div>
+
+      <!-- Buddy -->
+      <div class="demo-buddy"><div class="demo-buddy-face">✦</div></div>
+
+      <!-- Here label -->
+      <div class="demo-label">File menu</div>
+
+      <!-- Bubble -->
+      <div class="demo-bubble">
+        <div class="demo-bubble-tag">navi</div>
+        Click <strong>File</strong> in the top menu bar, then select <strong>New</strong> to start a new project.
+      </div>
+
+      <!-- Status bar -->
+      <div class="demo-status">
+        <div class="demo-status-dot"></div>
+        press <kbd>Ctrl+F</kbd> to speak
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<!-- HOW IT WORKS -->
+<section class="section" id="how">
+  <p class="section-label">How it works</p>
+  <h2>Three seconds to an answer</h2>
+  <div class="steps">
+    <div class="step-card">
+      <div class="step-icon">🎙</div>
+      <h3>1. Ask out loud</h3>
+      <p>Press <kbd>Ctrl+F</kbd> and speak your question — <em>"How do I add a filter in DaVinci Resolve?"</em></p>
+    </div>
+    <div class="step-card">
+      <div class="step-icon">👁</div>
+      <h3>2. Navi sees your screen</h3>
+      <p>Navi captures your screen and sends it to a local AI model. Nothing ever leaves your machine.</p>
+    </div>
+    <div class="step-card">
+      <div class="step-icon">✦</div>
+      <h3>3. Buddy flies to the answer</h3>
+      <p>The Navi buddy flies to the exact UI element, labels it <em>"Here!"</em> and explains what to do next.</p>
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<!-- FEATURES -->
+<section class="section" id="features">
+  <p class="section-label">Features</p>
+  <h2>Built different</h2>
+  <div class="features">
+    <div class="feature">
+      <div class="feature-icon">🔒</div>
+      <div>
+        <h4>100% local &amp; private</h4>
+        <p>Everything runs on your machine via Ollama. Your screen, your voice, your questions — none of it ever leaves your PC.</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🎯</div>
+      <div>
+        <h4>Points to the exact pixel</h4>
+        <p>Not just text — Navi visually flies to the button, menu, or field you need to click. No more hunting around.</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🗣</div>
+      <div>
+        <h4>Voice-first</h4>
+        <p>Hold <kbd>Ctrl+F</kbd> and speak naturally. Whisper transcribes locally, so no internet needed for voice input either.</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">✨</div>
+      <div>
+        <h4>ElevenLabs voice support</h4>
+        <p>Use a natural AI voice for responses. Plug in your ElevenLabs API key in settings and pick any voice.</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">⚡</div>
+      <div>
+        <h4>Works in any app</h4>
+        <p>Blender, Photoshop, DaVinci Resolve, Outlook — if it's on your screen, Navi can guide you through it.</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🪟</div>
+      <div>
+        <h4>Always-on overlay</h4>
+        <p>Navi lives as a transparent overlay. It follows your mouse, stays out of the way, and never steals focus.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<hr>
+
+<!-- REQUIREMENTS -->
+<section class="section" id="requirements">
+  <p class="section-label">Requirements</p>
+  <h2>What you need</h2>
+  <div class="req-grid">
+    <div class="req-card">
+      <div class="req-icon">🪟</div>
+      <h4>Windows 10 or 11</h4>
+      <p>64-bit. Intel or AMD.</p>
+    </div>
+    <div class="req-card">
+      <div class="req-icon">🦙</div>
+      <h4>Ollama</h4>
+      <p>Free local AI runtime.<br><a href="https://ollama.com/download" target="_blank">Download at ollama.com</a></p>
+    </div>
+    <div class="req-card">
+      <div class="req-icon">🧠</div>
+      <h4>Gemma 4 model</h4>
+      <p>Run once: <code style="font-size:11px;color:#c8f04a">ollama pull gemma4</code><br>~9.6 GB download</p>
+    </div>
+    <div class="req-card">
+      <div class="req-icon">💾</div>
+      <h4>16 GB RAM recommended</h4>
+      <p>8 GB minimum. More RAM = faster responses.</p>
+    </div>
+  </div>
+  <p style="text-align:center;font-size:12px;color:#444;margin-top:24px">Navi's built-in setup screen walks you through everything on first launch.</p>
+</section>
+
+<hr>
+
+<!-- CTA -->
+<section class="cta-section">
+  <h2>Ready to try it?</h2>
+  <p>Free download. No account. No cloud. Just Navi on your screen.</p>
+  <a class="btn-main" style="display:inline-flex" href="https://github.com/benryanx/navi/releases/latest">
+    ⬇ Download Navi for Windows
+  </a>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-logo">✦ Navi</div>
+  <p>Built with Electron, Whisper, and Gemma 4</p>
+  <div class="footer-links">
+    <a href="https://github.com/benryanx/navi">GitHub</a>
+    <a href="https://ollama.com" target="_blank">Ollama</a>
+  </div>
+</footer>
+
+</body>
+</html>

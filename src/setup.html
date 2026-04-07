@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Navi — Setup</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #111;
+    color: #e8e8e8;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    display: flex; align-items: center; justify-content: center;
+    height: 100vh;
+    -webkit-app-region: drag;
+  }
+
+  .card {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 20px;
+    padding: 40px;
+    width: 460px;
+    -webkit-app-region: no-drag;
+  }
+
+  .logo { font-size: 32px; font-weight: 700; letter-spacing: -1px; color: #c8f04a; margin-bottom: 6px; }
+  .tagline { font-size: 13px; color: #666; margin-bottom: 32px; }
+
+  .step {
+    display: flex; gap: 16px; align-items: flex-start;
+    padding: 14px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .step:last-of-type { border-bottom: none; }
+
+  .step-num {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: rgba(200,240,74,0.12);
+    border: 1px solid rgba(200,240,74,0.3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 600; color: #c8f04a;
+    flex-shrink: 0; margin-top: 2px;
+  }
+  .step-num.done { background: #c8f04a; color: #000; border-color: #c8f04a; }
+  .step-num.done::after { content: '✓'; }
+
+  .step-body { flex: 1; }
+  .step-title { font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+  .step-desc  { font-size: 12px; color: #666; line-height: 1.5; }
+
+  .btn {
+    display: inline-block; margin-top: 10px;
+    padding: 7px 16px; border-radius: 8px;
+    font-size: 12px; font-weight: 500; cursor: pointer;
+    border: none; font-family: inherit;
+    transition: opacity .15s;
+  }
+  .btn:hover { opacity: .85; }
+  .btn-primary { background: #c8f04a; color: #000; }
+  .btn-outline { background: transparent; border: 1px solid rgba(255,255,255,0.15); color: #ccc; }
+
+  .step-status { font-size: 11px; margin-top: 6px; }
+  .step-status.ok   { color: #c8f04a; }
+  .step-status.warn { color: #ff9090; }
+
+  #launch-btn {
+    width: 100%; padding: 13px;
+    background: #c8f04a; color: #000;
+    border: none; border-radius: 12px;
+    font-size: 14px; font-weight: 600; font-family: inherit;
+    cursor: pointer; margin-top: 28px;
+    opacity: .4; pointer-events: none;
+    transition: opacity .2s;
+  }
+  #launch-btn.ready { opacity: 1; pointer-events: all; }
+
+  .code {
+    display: inline-block;
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-family: 'Consolas', monospace;
+    font-size: 11px;
+    color: #c8f04a;
+    margin-top: 6px;
+    user-select: text;
+  }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">Navi</div>
+  <div class="tagline">AI screen guide — shows you exactly where to click</div>
+
+  <!-- Step 1: Ollama -->
+  <div class="step">
+    <div class="step-num" id="s1-num">1</div>
+    <div class="step-body">
+      <div class="step-title">Install Ollama</div>
+      <div class="step-desc">Navi uses Ollama to run AI models locally on your machine. Free and private — nothing leaves your PC.</div>
+      <div class="step-status" id="s1-status"></div>
+      <button class="btn btn-primary" id="s1-btn" onclick="openOllama()">Download Ollama</button>
+      <button class="btn btn-outline" id="s1-check" onclick="checkOllama()" style="margin-left:6px">Check again</button>
+    </div>
+  </div>
+
+  <!-- Step 2: Pull Gemma -->
+  <div class="step">
+    <div class="step-num" id="s2-num">2</div>
+    <div class="step-body">
+      <div class="step-title">Download the AI model</div>
+      <div class="step-desc">Run this once in your terminal — downloads Gemma 4 (~9.6 GB). Only needed once.</div>
+      <div class="code">ollama pull gemma4</div>
+      <div class="step-status" id="s2-status"></div>
+      <button class="btn btn-outline" id="s2-check" onclick="checkModel()" style="margin-top:10px">Check again</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Ready -->
+  <div class="step">
+    <div class="step-num" id="s3-num">3</div>
+    <div class="step-body">
+      <div class="step-title">You're ready!</div>
+      <div class="step-desc">Press <strong>Ctrl+F</strong> to speak and ask Navi anything about your screen.</div>
+    </div>
+  </div>
+
+  <button id="launch-btn" onclick="launch()">Launch Navi →</button>
+</div>
+
+<script>
+const { ipcRenderer, shell } = require('electron');
+
+let ollamaOk = false;
+let modelOk  = false;
+
+function openOllama() { shell.openExternal('https://ollama.com/download'); }
+
+async function checkOllama() {
+  const s = await ipcRenderer.invoke('check-ollama');
+  ollamaOk = s.running;
+  modelOk  = s.hasGemma;
+
+  const n1 = document.getElementById('s1-num');
+  const t1 = document.getElementById('s1-status');
+  const b1 = document.getElementById('s1-btn');
+  if (ollamaOk) {
+    n1.classList.add('done'); n1.textContent = '';
+    t1.className = 'step-status ok'; t1.textContent = '✓ Ollama is running';
+    b1.style.display = 'none';
+  } else {
+    t1.className = 'step-status warn'; t1.textContent = '✗ Ollama not detected — install it and make sure it's running';
+  }
+
+  const n2 = document.getElementById('s2-num');
+  const t2 = document.getElementById('s2-status');
+  if (modelOk) {
+    n2.classList.add('done'); n2.textContent = '';
+    t2.className = 'step-status ok'; t2.textContent = '✓ Gemma 4 is ready';
+  } else if (ollamaOk) {
+    t2.className = 'step-status warn'; t2.textContent = '✗ Model not found — run the command above in a terminal';
+  }
+
+  if (ollamaOk) document.getElementById('s3-num').classList.add('done');
+
+  const launchBtn = document.getElementById('launch-btn');
+  if (ollamaOk && modelOk) launchBtn.classList.add('ready');
+}
+
+function checkModel() { checkOllama(); }
+
+function launch() { ipcRenderer.send('setup-complete'); }
+
+// Check on load
+checkOllama();
+</script>
+</body>
+</html>

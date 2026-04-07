@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Navi</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --accent:      #c8f04a;
+    --accent-dim:  rgba(200,240,74,0.15);
+    --accent-glow: rgba(200,240,74,0.4);
+    --red:         #ff5a5a;
+    --surface:     rgba(18,18,18,0.92);
+    --border:      rgba(255,255,255,0.1);
+    --text:        #e8e8e8;
+    --text-dim:    #888;
+  }
+
+  html, body {
+    width: 100vw; height: 100vh;
+    background: transparent;
+    overflow: hidden;
+    font-family: 'DM Mono', 'Courier New', monospace;
+    color: var(--text);
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  /* ── BUDDY ──────────────────────────────────────────────────────────── */
+  #buddy {
+    position: fixed;
+    width: 52px; height: 52px;
+    pointer-events: none;
+    z-index: 9000;
+    transform: translate(-50%, -50%);
+    transition: left 0.4s cubic-bezier(0.22,1,0.36,1),
+                top  0.4s cubic-bezier(0.22,1,0.36,1);
+  }
+
+  #buddy-ring {
+    position: absolute; inset: 0;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    opacity: 0;
+  }
+  #buddy.guide #buddy-ring {
+    opacity: 1;
+    animation: ring-ping 1.2s ease-out infinite;
+  }
+
+  #buddy-face {
+    position: absolute; inset: 4px;
+    background: var(--accent);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+    box-shadow: 0 0 18px var(--accent-glow), 0 4px 20px rgba(0,0,0,0.5);
+    transition: transform 0.15s ease, background 0.2s;
+  }
+
+  #buddy.idle   #buddy-face { background: var(--accent); }
+  #buddy.listen #buddy-face { background: var(--red); animation: pulse 0.8s ease-in-out infinite; }
+  #buddy.think  #buddy-face { background: #4af0c8; animation: glow 1.5s linear infinite; }
+  #buddy.guide  #buddy-face { background: var(--accent); }
+
+  @keyframes pulse  { 0%,100%{transform:scale(1);box-shadow:0 0 18px rgba(255,90,90,.5)} 50%{transform:scale(1.08);box-shadow:0 0 32px rgba(255,90,90,.8)} }
+  @keyframes glow   { 0%,100%{box-shadow:0 0 20px rgba(74,240,200,.6)} 50%{box-shadow:0 0 40px rgba(74,240,200,.9)} }
+  @keyframes ring-ping { 0%{transform:scale(1);opacity:1} 100%{transform:scale(2.2);opacity:0} }
+
+  /* ── SPEECH BUBBLE ──────────────────────────────────────────────────── */
+  #bubble {
+    position: fixed;
+    max-width: 320px; min-width: 180px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 14px 16px;
+    z-index: 8999;
+    pointer-events: none;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.05);
+    opacity: 0;
+    transform: scale(0.9) translateY(6px);
+    transition: opacity 0.25s, transform 0.25s cubic-bezier(0.22,1,0.36,1);
+  }
+  #bubble.show { opacity: 1; transform: scale(1) translateY(0); }
+
+  #bubble-tag  { font-size: 9px; color: var(--accent); letter-spacing: .12em; text-transform: uppercase; font-weight: 500; margin-bottom: 6px; }
+  #bubble-main { font-size: 12.5px; line-height: 1.65; color: #ddd; }
+  #bubble-steps { margin-top: 10px; display: flex; flex-direction: column; gap: 5px; }
+
+  .step-item { display: flex; gap: 8px; align-items: flex-start; font-size: 11px; color: var(--text-dim); line-height: 1.5; }
+  .step-num  { flex-shrink: 0; width: 17px; height: 17px; background: var(--accent-dim); border: 1px solid rgba(200,240,74,.3); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 9px; color: var(--accent); font-weight: 500; margin-top: 1px; }
+  .step-item.active { color: var(--text); }
+  .step-item.active .step-num { background: var(--accent); color: #000; }
+
+  /* ── HERE LABEL ─────────────────────────────────────────────────────── */
+  #here-label {
+    position: fixed; pointer-events: none; z-index: 9001;
+    transform: translate(-50%, -130%);
+    background: var(--accent); color: #000;
+    font-size: 11px; font-weight: 500; letter-spacing: .05em;
+    padding: 4px 10px; border-radius: 20px; white-space: nowrap;
+    box-shadow: 0 0 20px var(--accent-glow), 0 4px 12px rgba(0,0,0,.4);
+    opacity: 0;
+    transition: opacity .2s, left .4s cubic-bezier(0.22,1,0.36,1), top .4s cubic-bezier(0.22,1,0.36,1);
+  }
+  #here-label.show { opacity: 1; }
+
+  #target-dot {
+    position: fixed; width: 14px; height: 14px;
+    border-radius: 50%; border: 2px solid var(--accent);
+    background: rgba(200,240,74,0.2);
+    transform: translate(-50%,-50%); pointer-events: none; z-index: 8998;
+    opacity: 0;
+    transition: opacity .3s, left .4s cubic-bezier(0.22,1,0.36,1), top .4s cubic-bezier(0.22,1,0.36,1);
+  }
+  #target-dot.show { opacity: 1; animation: breathe 1.5s ease-in-out infinite; }
+  @keyframes breathe { 0%,100%{box-shadow:0 0 0 0 rgba(200,240,74,.4)} 50%{box-shadow:0 0 0 8px rgba(200,240,74,0)} }
+
+  /* ── STATUS BAR ─────────────────────────────────────────────────────── */
+  #status-bar {
+    position: fixed; bottom: 28px; left: 50%;
+    transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 40px;
+    padding: 8px 18px 8px 14px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 4px 24px rgba(0,0,0,.5);
+    z-index: 8000;
+    pointer-events: all;
+    cursor: default;
+  }
+
+  #status-dot {
+    width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 6px var(--accent);
+    flex-shrink: 0; transition: background .3s, box-shadow .3s;
+  }
+  #status-dot.red  { background: var(--red); box-shadow: 0 0 8px var(--red); animation: pulse .8s infinite; }
+  #status-dot.teal { background: #4af0c8; box-shadow: 0 0 8px #4af0c8; }
+
+  #status-text { font-size: 11px; color: var(--text-dim); letter-spacing: .04em; min-width: 200px; text-align: center; }
+
+  #mic-btn {
+    width: 32px; height: 32px; border-radius: 50%;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.05);
+    color: var(--text); font-size: 15px;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s, transform .1s;
+    pointer-events: all;
+  }
+  #mic-btn:hover  { background: rgba(255,255,255,0.12); transform: scale(1.05); }
+  #mic-btn.active { background: var(--red); border-color: var(--red); }
+
+  /* ── WARNINGS / TRANSCRIPT ───────────────────────────────────────────── */
+  #ollama-warn {
+    position: fixed; top: 24px; left: 50%; transform: translateX(-50%);
+    background: rgba(255,90,90,.12); border: 1px solid rgba(255,90,90,.3);
+    border-radius: 10px; padding: 10px 18px;
+    font-size: 11px; color: #ff9090; z-index: 9999;
+    pointer-events: none; display: none;
+  }
+
+  #transcript {
+    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
+    max-width: 480px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 10px 16px;
+    font-size: 12px; color: #aaa;
+    backdrop-filter: blur(20px);
+    z-index: 7999; pointer-events: none;
+    opacity: 0; transition: opacity .2s;
+    text-align: center; font-style: italic;
+  }
+  #transcript.show { opacity: 1; }
+
+  /* ── SETTINGS PANEL ──────────────────────────────────────────────────── */
+  #settings-btn {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.05);
+    color: var(--text-dim); font-size: 13px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: background .15s, color .15s;
+    pointer-events: all;
+  }
+  #settings-btn:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+
+  #settings-panel {
+    position: fixed; bottom: 72px; left: 50%;
+    transform: translateX(-50%) translateY(8px);
+    width: 320px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 18px;
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    box-shadow: 0 8px 40px rgba(0,0,0,0.7);
+    z-index: 9500;
+    pointer-events: all;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s, transform .2s cubic-bezier(0.22,1,0.36,1);
+  }
+  #settings-panel.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: all;
+  }
+  .settings-title { font-size: 10px; color: var(--accent); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 14px; }
+  .settings-row { margin-bottom: 14px; }
+  .settings-label { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; }
+  .tts-toggle { display: flex; gap: 6px; }
+  .tts-btn {
+    flex: 1; padding: 7px; border-radius: 8px;
+    border: 1px solid var(--border);
+    background: transparent; color: var(--text-dim);
+    font-size: 11px; cursor: pointer; font-family: inherit;
+    transition: all .15s;
+  }
+  .tts-btn.active { background: var(--accent-dim); border-color: rgba(200,240,74,.4); color: var(--accent); }
+  .settings-input {
+    width: 100%; padding: 8px 10px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text);
+    font-size: 11px; font-family: inherit; outline: none;
+    transition: border-color .15s;
+  }
+  .settings-input:focus { border-color: rgba(200,240,74,.4); }
+  #elevenlabs-fields { display: none; margin-top: 10px; }
+  #elevenlabs-fields.show { display: block; }
+  .settings-save {
+    width: 100%; padding: 8px;
+    background: var(--accent); color: #000;
+    border: none; border-radius: 8px;
+    font-size: 11px; font-weight: 500; font-family: inherit;
+    cursor: pointer; margin-top: 4px;
+    transition: opacity .15s;
+  }
+  .settings-save:hover { opacity: .85; }
+  .settings-quit {
+    width: 100%; padding: 8px;
+    background: transparent; color: #ff6b6b;
+    border: 1px solid rgba(255,107,107,0.3); border-radius: 8px;
+    font-size: 12px; font-weight: 500; font-family: inherit;
+    cursor: pointer; margin-top: 6px;
+    transition: background .15s, border-color .15s;
+  }
+  .settings-quit:hover { background: rgba(255,107,107,0.1); border-color: rgba(255,107,107,0.6); }
+</style>
+</head>
+<body>
+
+<div id="ollama-warn">⚠ Ollama not detected — run: <strong>ollama serve</strong> &amp; <strong>ollama pull gemma4</strong></div>
+
+<div id="buddy" class="idle">
+  <div id="buddy-ring"></div>
+  <div id="buddy-face">✦</div>
+</div>
+
+<div id="here-label">Here!</div>
+<div id="target-dot"></div>
+
+<div id="bubble">
+  <div id="bubble-tag">navi</div>
+  <div id="bubble-main"></div>
+  <div id="bubble-steps"></div>
+</div>
+
+<div id="transcript"></div>
+
+<div id="settings-panel">
+  <div class="settings-title">navi settings</div>
+  <div class="settings-row">
+    <div class="settings-label">Voice</div>
+    <div class="tts-toggle">
+      <button class="tts-btn active" id="btn-local">Local (browser)</button>
+      <button class="tts-btn" id="btn-eleven">ElevenLabs</button>
+    </div>
+    <div id="elevenlabs-fields">
+      <div class="settings-label" style="margin-top:10px">API Key</div>
+      <input class="settings-input" id="el-key" type="password" placeholder="sk-...">
+      <div class="settings-label" style="margin-top:8px">Voice ID</div>
+      <input class="settings-input" id="el-voice" type="text" placeholder="fS4RM86GDhM251CjumZM">
+    </div>
+  </div>
+  <button class="settings-save" id="settings-save-btn">Save</button>
+  <button class="settings-quit" id="settings-quit-btn">Quit Navi</button>
+</div>
+
+<div id="status-bar">
+  <div id="status-dot"></div>
+  <div id="status-text">loading whisper…</div>
+  <button id="mic-btn" title="Click to speak">🎙</button>
+  <button id="settings-btn" title="Settings">⚙</button>
+</div>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────────────────────────────────
+const State = { IDLE: 'idle', LISTEN: 'listen', THINK: 'think', GUIDE: 'guide' };
+let state = State.IDLE;
+let whisperReady = false;
+let autoDismissTimer = null;
+
+let bx = window.innerWidth / 2;
+let by = window.innerHeight - 120;
+let targetBx = bx, targetBy = by;
+let isFollowingMouse = true;
+
+// ─────────────────────────────────────────────────────────────────────────
+// DOM refs
+// ─────────────────────────────────────────────────────────────────────────
+const buddy      = document.getElementById('buddy');
+const buddyFace  = document.getElementById('buddy-face');
+const bubble     = document.getElementById('bubble');
+const bubbleMain = document.getElementById('bubble-main');
+const bubbleSteps= document.getElementById('bubble-steps');
+const hereLabel  = document.getElementById('here-label');
+const targetDot  = document.getElementById('target-dot');
+const statusDot  = document.getElementById('status-dot');
+const statusText = document.getElementById('status-text');
+const micBtn     = document.getElementById('mic-btn');
+const transcript = document.getElementById('transcript');
+const ollamaWarn = document.getElementById('ollama-warn');
+
+// ─────────────────────────────────────────────────────────────────────────
+// Buddy animation
+// ─────────────────────────────────────────────────────────────────────────
+(function animLoop() {
+  bx += (targetBx - bx) * (isFollowingMouse ? 0.12 : 0.07);
+  by += (targetBy - by) * (isFollowingMouse ? 0.12 : 0.07);
+  buddy.style.left = bx + 'px';
+  buddy.style.top  = by + 'px';
+  positionBubble();
+  requestAnimationFrame(animLoop);
+})();
+
+document.addEventListener('mousemove', e => {
+  if (isFollowingMouse) { targetBx = e.clientX + 44; targetBy = e.clientY - 20; }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// State machine
+// ─────────────────────────────────────────────────────────────────────────
+function setState(s) {
+  state = s;
+  buddy.className = s;
+
+  switch (s) {
+    case State.IDLE:
+      buddyFace.textContent = '✦';
+      statusDot.className = '';
+      statusText.textContent = whisperReady
+        ? 'press Ctrl+F to speak'
+        : 'loading whisper…';
+      isFollowingMouse = true;
+      clearTimeout(autoDismissTimer);
+      hideBubble(); hideGuide();
+      break;
+
+    case State.LISTEN:
+      buddyFace.textContent = '🎙';
+      statusDot.className = 'red';
+      statusText.textContent = 'listening… press Ctrl+F to send';
+      micBtn.classList.add('active');
+      hideBubble(); hideGuide();
+      break;
+
+    case State.THINK:
+      buddyFace.textContent = '◌';
+      statusDot.className = 'teal';
+      micBtn.classList.remove('active');
+      break;
+
+    case State.GUIDE:
+      buddyFace.textContent = '✦';
+      statusDot.className = '';
+      statusText.textContent = 'tap anywhere to dismiss';
+      isFollowingMouse = false;
+      break;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Bubble
+// ─────────────────────────────────────────────────────────────────────────
+function positionBubble() {
+  const W = window.innerWidth, H = window.innerHeight;
+  const bh = bubble.offsetHeight || 100;
+  let left = bx + 34, top = by - bh - 18;
+  if (left + 320 > W - 16) left = bx - 320 - 18;
+  if (top < 16) top = by + 34;
+  if (left < 16) left = 16;
+  bubble.style.left = left + 'px';
+  bubble.style.top  = top  + 'px';
+}
+
+function showBubble(explanation, steps) {
+  bubbleMain.textContent = explanation;
+  bubbleSteps.innerHTML  = '';
+  (steps || []).forEach((step, i) => {
+    const div = document.createElement('div');
+    div.className = 'step-item' + (i === 0 ? ' active' : '');
+    div.innerHTML = `<div class="step-num">${i + 1}</div><div>${step}</div>`;
+    bubbleSteps.appendChild(div);
+  });
+  bubble.classList.add('show');
+  if (steps && steps.length > 1) {
+    steps.forEach((_, i) => {
+      setTimeout(() => {
+        document.querySelectorAll('.step-item').forEach((el, j) => {
+          el.classList.toggle('active', j === i);
+        });
+      }, i * 2800);
+    });
+  }
+}
+function hideBubble() { bubble.classList.remove('show'); }
+
+// ─────────────────────────────────────────────────────────────────────────
+// Guide: fly to target
+// ─────────────────────────────────────────────────────────────────────────
+function flyToTarget(nx, ny, label, explanation, steps) {
+  const W = window.innerWidth, H = window.innerHeight;
+  const px = nx * W, py = ny * H;
+
+  targetBx = px; targetBy = py - 60;
+
+  targetDot.style.left = px + 'px';
+  targetDot.style.top  = py + 'px';
+  targetDot.classList.add('show');
+
+  hereLabel.textContent  = label || 'Here!';
+  hereLabel.style.left   = px + 'px';
+  hereLabel.style.top    = (py - 10) + 'px';
+
+  setTimeout(() => {
+    hereLabel.classList.add('show');
+    showBubble(explanation, steps);
+    speak(explanation);
+
+    // Auto-dismiss after 5 seconds — buddy follows cursor again
+    clearTimeout(autoDismissTimer);
+    autoDismissTimer = setTimeout(() => setState(State.IDLE), 8000);
+  }, 450);
+}
+function hideGuide() { targetDot.classList.remove('show'); hereLabel.classList.remove('show'); }
+
+// ─────────────────────────────────────────────────────────────────────────
+// TTS — local or ElevenLabs depending on config
+// ─────────────────────────────────────────────────────────────────────────
+let naviConfig = { tts: 'local', elevenLabsKey: '', elevenLabsVoiceId: 'fS4RM86GDhM251CjumZM' };
+
+function speakLocal(text) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.rate = 1.05;
+  const voices = speechSynthesis.getVoices();
+  const preferred = voices.find(v => v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Zira'));
+  if (preferred) utt.voice = preferred;
+  window.speechSynthesis.speak(utt);
+}
+
+async function speakElevenLabs(text) {
+  const res = await window.navi.speakElevenLabs(text, naviConfig.elevenLabsKey, naviConfig.elevenLabsVoiceId);
+  if (!res.success) { speakLocal(text); return; } // fallback to local on error
+  const bytes = Uint8Array.from(atob(res.audio), c => c.charCodeAt(0));
+  const blob  = new Blob([bytes], { type: 'audio/mpeg' });
+  const url   = URL.createObjectURL(blob);
+  const audio = new Audio(url);
+  audio.play();
+  audio.onended = () => URL.revokeObjectURL(url);
+}
+
+function speak(text) {
+  if (naviConfig.tts === 'elevenlabs' && naviConfig.elevenLabsKey) {
+    speakElevenLabs(text);
+  } else {
+    speakLocal(text);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Settings panel
+// ─────────────────────────────────────────────────────────────────────────
+const settingsBtn   = document.getElementById('settings-btn');
+const settingsPanel = document.getElementById('settings-panel');
+const btnLocal      = document.getElementById('btn-local');
+const btnEleven     = document.getElementById('btn-eleven');
+const elFields      = document.getElementById('elevenlabs-fields');
+const elKey         = document.getElementById('el-key');
+const elVoice       = document.getElementById('el-voice');
+const saveBtn       = document.getElementById('settings-save-btn');
+const quitBtn       = document.getElementById('settings-quit-btn');
+
+function applyTTSToggle(tts) {
+  btnLocal.classList.toggle('active', tts === 'local');
+  btnEleven.classList.toggle('active', tts === 'elevenlabs');
+  elFields.classList.toggle('show', tts === 'elevenlabs');
+}
+
+function toggleSettings() {
+  const opening = !settingsPanel.classList.contains('show');
+  settingsPanel.classList.toggle('show', opening);
+  window.navi.setInteractive(opening);
+}
+
+settingsBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  toggleSettings();
+});
+
+window.navi.onHotkeySettings(() => toggleSettings());
+
+btnLocal.addEventListener('click',  () => applyTTSToggle('local'));
+btnEleven.addEventListener('click', () => applyTTSToggle('elevenlabs'));
+
+saveBtn.addEventListener('click', async e => {
+  e.stopPropagation();
+  naviConfig.tts               = btnEleven.classList.contains('active') ? 'elevenlabs' : 'local';
+  naviConfig.elevenLabsKey     = elKey.value.trim();
+  naviConfig.elevenLabsVoiceId = elVoice.value.trim() || 'fS4RM86GDhM251CjumZM';
+  await window.navi.saveConfig(naviConfig);
+  settingsPanel.classList.remove('show');
+  window.navi.setInteractive(false);
+});
+
+quitBtn.addEventListener('click', () => window.navi.quitApp());
+
+// Esc also closes settings
+window.navi.onHotkeyDismiss(() => {
+  if (settingsPanel.classList.contains('show')) {
+    settingsPanel.classList.remove('show');
+    window.navi.setInteractive(false);
+    return;
+  }
+  setState(State.IDLE);
+  transcript.classList.remove('show');
+  window.speechSynthesis?.cancel();
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Audio recording (Web Audio API → WAV → Whisper)
+// ─────────────────────────────────────────────────────────────────────────
+let isRecording  = false;
+let audioCtx     = null;
+let scriptProc   = null;
+let micStream    = null;
+let audioSamples = [];
+const SAMPLE_RATE = 16000;
+
+async function startRecording() {
+  if (isRecording || !whisperReady) return;
+  try {
+    window.navi.setInteractive(true);
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    audioCtx   = new AudioContext();
+    scriptProc = audioCtx.createScriptProcessor(4096, 1, 1);
+    audioSamples = [];
+
+    scriptProc.onaudioprocess = e => {
+      const chunk = e.inputBuffer.getChannelData(0);
+      for (let i = 0; i < chunk.length; i++) audioSamples.push(chunk[i]);
+    };
+
+    // Silent gain node — required to keep ScriptProcessor active without playing mic back
+    const silent = audioCtx.createGain();
+    silent.gain.value = 0;
+    const source = audioCtx.createMediaStreamSource(micStream);
+    source.connect(scriptProc);
+    scriptProc.connect(silent);
+    silent.connect(audioCtx.destination);
+
+    isRecording = true;
+    const label = micStream.getAudioTracks()[0]?.label || 'unknown mic';
+    setState(State.LISTEN);
+    statusText.textContent = '🎙 ' + label.slice(0, 40) + ' — press Ctrl+F to send';
+  } catch (err) {
+    console.error('Mic error:', err);
+    statusText.textContent = '⚠ mic: ' + err.message;
+    window.navi.setInteractive(false);
+  }
+}
+
+async function stopRecording() {
+  if (!isRecording) return;
+  isRecording = false;
+
+  // Capture actual sample rate before closing context
+  const actualSampleRate = audioCtx.sampleRate;
+
+  scriptProc.disconnect();
+  micStream.getTracks().forEach(t => t.stop());
+  await audioCtx.close();
+  window.navi.setInteractive(false);
+
+  const samples = new Float32Array(audioSamples);
+  audioSamples  = [];
+
+  if (samples.length < actualSampleRate * 0.3) {
+    setState(State.IDLE);
+    return;
+  }
+
+  setState(State.THINK);
+  statusText.textContent = 'resampling audio…';
+
+  // Resample to 16kHz using OfflineAudioContext (Whisper's required rate)
+  const TARGET_SR = 16000;
+  const resampled = await resampleTo16k(samples, actualSampleRate, TARGET_SR);
+
+  statusText.textContent = 'transcribing…';
+  const b64 = encodeWAVtoBase64(resampled, TARGET_SR);
+  const res  = await window.navi.transcribeAudio(b64);
+
+  if (!res.success || !res.text) {
+    const msg = '⚠ ' + (res.error || 'transcription failed — nothing heard?');
+    statusText.textContent = msg;
+    statusDot.className = 'red';
+    setTimeout(() => setState(State.IDLE), 3000);
+    return;
+  }
+
+  transcript.textContent = '"' + res.text + '"';
+  transcript.classList.add('show');
+
+  await handleVoiceQuery(res.text);
+}
+
+// Resample Float32Array from sourceSR to targetSR using OfflineAudioContext
+async function resampleTo16k(samples, sourceSR, targetSR) {
+  if (sourceSR === targetSR) return samples;
+  const outLen     = Math.round(samples.length * targetSR / sourceSR);
+  const offlineCtx = new OfflineAudioContext(1, outLen, targetSR);
+  const buf        = offlineCtx.createBuffer(1, samples.length, sourceSR);
+  buf.getChannelData(0).set(samples);
+  const src = offlineCtx.createBufferSource();
+  src.buffer = buf;
+  src.connect(offlineCtx.destination);
+  src.start(0);
+  const rendered = await offlineCtx.startRendering();
+  return rendered.getChannelData(0);
+}
+
+// Encode Float32Array → 16-bit PCM WAV → base64 (no external libs needed)
+function encodeWAVtoBase64(samples, sampleRate) {
+  const len = samples.length;
+  const buf = new ArrayBuffer(44 + len * 2);
+  const v   = new DataView(buf);
+  const s   = (off, str) => { for (let i = 0; i < str.length; i++) v.setUint8(off + i, str.charCodeAt(i)); };
+
+  s(0,  'RIFF');  v.setUint32(4,  36 + len * 2, true);
+  s(8,  'WAVE');  s(12, 'fmt ');
+  v.setUint32(16, 16, true);            // chunk size
+  v.setUint16(20, 1,  true);            // PCM
+  v.setUint16(22, 1,  true);            // mono
+  v.setUint32(24, sampleRate,     true);
+  v.setUint32(28, sampleRate * 2, true);
+  v.setUint16(32, 2,  true);            // block align
+  v.setUint16(34, 16, true);            // bits per sample
+  s(36, 'data'); v.setUint32(40, len * 2, true);
+
+  for (let i = 0; i < len; i++) {
+    const x = Math.max(-1, Math.min(1, samples[i]));
+    v.setInt16(44 + i * 2, x < 0 ? x * 32768 : x * 32767, true);
+  }
+
+  // Convert ArrayBuffer → base64
+  const bytes  = new Uint8Array(buf);
+  let binary = '';
+  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Core query flow: screenshot → Gemma4 → fly
+// ─────────────────────────────────────────────────────────────────────────
+async function handleVoiceQuery(question) {
+  if (!question) { setState(State.IDLE); return; }
+
+  setState(State.THINK);
+  statusText.textContent = `"${question.slice(0, 44)}${question.length > 44 ? '…' : ''}"`;
+
+  try {
+    const capture = await window.navi.captureScreen();
+    if (!capture.success) throw new Error('Screen capture failed: ' + capture.error);
+
+    const result = await window.navi.askGemma(question, capture.base64, capture.snapW, capture.snapH);
+    if (!result.success) throw new Error('Gemma error: ' + result.error);
+
+    setState(State.GUIDE);
+    transcript.classList.remove('show');
+
+    if (result.parsed) {
+      const { targetX, targetY, label, explanation, steps } = result.parsed;
+      // Convert pixel coords → normalized 0-1 using snapshot dimensions
+      const nx = targetX / (capture.snapW || 1280);
+      const ny = targetY / (capture.snapH || 720);
+      flyToTarget(nx, ny, label, explanation, steps);
+    } else {
+      showBubble(result.raw, []);
+      speak(result.raw);
+    }
+  } catch (err) {
+    console.error(err);
+    showBubble('⚠ ' + err.message, []);
+    bubble.classList.add('show');
+    setTimeout(() => hideBubble(), 4000);
+    setState(State.IDLE);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Hotkeys + mic button
+// ─────────────────────────────────────────────────────────────────────────
+window.navi.onHotkeyToggle(() => {
+  if (state === State.IDLE || state === State.GUIDE) startRecording();
+  else if (state === State.LISTEN) stopRecording();
+});
+
+window.navi.onHotkeyDismiss(() => {  // legacy — handled above, kept for recording cleanup
+  if (isRecording) { isRecording = false; scriptProc?.disconnect(); micStream?.getTracks().forEach(t => t.stop()); }
+  window.speechSynthesis?.cancel();
+});
+
+micBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  if (state === State.LISTEN) stopRecording();
+  else startRecording();
+});
+
+document.addEventListener('click', e => {
+  if (e.target === micBtn) return;
+  if (state === State.GUIDE) setState(State.IDLE);
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Whisper status from main process
+// ─────────────────────────────────────────────────────────────────────────
+window.navi.onTranscriberStatus(status => {
+  if (status === 'loading') {
+    statusText.textContent = 'loading whisper model…';
+  } else if (status === 'ready') {
+    whisperReady = true;
+    setState(State.IDLE);
+    setTimeout(() => {
+      showBubble("Hey! I'm Navi. Press Ctrl+F and ask me anything about your screen.", []);
+      speak("Hey! I'm Navi. Press Control F and ask me anything about your screen.");
+      setTimeout(() => hideBubble(), 5000);
+    }, 300);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// Init
+// ─────────────────────────────────────────────────────────────────────────
+async function init() {
+  // Load saved config
+  naviConfig = await window.navi.getConfig();
+  applyTTSToggle(naviConfig.tts);
+  if (naviConfig.elevenLabsKey)    elKey.value   = naviConfig.elevenLabsKey;
+  if (naviConfig.elevenLabsVoiceId) elVoice.value = naviConfig.elevenLabsVoiceId;
+
+  const status = await window.navi.checkOllama();
+  if (!status.running) {
+    ollamaWarn.style.display = 'block';
+  } else if (!status.hasGemma) {
+    ollamaWarn.textContent = '⚠ Gemma4 not found — run: ollama pull gemma4';
+    ollamaWarn.style.display = 'block';
+  }
+}
+
+init();
+</script>
+</body>
+</html>
