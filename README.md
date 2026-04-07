@@ -1,17 +1,19 @@
-# Clicky for Windows 🪟✦
+# Navi ✦
 
 > An AI buddy that lives on your screen, sees what you see, and guides your cursor to exactly where you need to go.
 
+*Inspired by Clicky (macOS) — built from the ground up for Windows.*
+
 ## How it works
 
-1. **Hold** `Ctrl+Shift+Space` and speak your question
+1. **Press** `Ctrl+F` and speak your question
    - *"How do I add a filter in DaVinci Resolve?"*
    - *"Where do I set keyframes in After Effects?"*
    - *"How do I center this element in Figma?"*
 
-2. **Release** — Clicky captures your screen and asks Gemma 4 (running locally via Ollama)
+2. **Press again** — Navi captures your screen and asks Gemma 4 (running locally via Ollama)
 
-3. **Clicky flies** to the exact UI element, shows **"Here!"**, and explains what to do next — both in text and voice
+3. **Navi flies** to the exact UI element, shows **"Here!"**, and explains what to do next — both in text and voice
 
 4. **Click anywhere** or press `Esc` to dismiss
 
@@ -20,9 +22,7 @@
 ## Requirements
 
 - Windows 10/11 (64-bit)
-- Node.js v18+ → [nodejs.org](https://nodejs.org)
-- Ollama → [ollama.com](https://ollama.com) *(installed automatically by setup)*
-- ~4GB free disk space for the Gemma model
+- [Ollama](https://ollama.com) with `gemma4` model pulled
 - Microphone
 
 ---
@@ -30,26 +30,15 @@
 ## Quick Setup
 
 ```powershell
-# 1. Clone or download this folder, then:
-cd clicky-win
+# 1. Install Ollama from https://ollama.com/download
+# 2. Pull the vision model
+ollama pull gemma4
 
-# 2. Run the setup script (installs Ollama + Gemma automatically)
-powershell -ExecutionPolicy Bypass -File setup.ps1
+# 3. Clone this repo and install deps
+npm install
 
-# 3. Start Clicky
+# 4. Start Navi
 npm start
-```
-
-### Manual setup (if you prefer)
-
-```powershell
-# Install Ollama from https://ollama.com/download
-# Then:
-ollama serve            # start the local AI server
-ollama pull gemma3:4b   # download the vision model (~3GB)
-
-npm install             # install Electron + deps
-npm start               # launch Clicky
 ```
 
 ---
@@ -58,10 +47,17 @@ npm start               # launch Clicky
 
 | Key | Action |
 |-----|--------|
-| `Ctrl+Shift+Space` (hold) | Start speaking |
-| Release | Send + analyze screen |
-| `Esc` | Dismiss |
-| Click anywhere | Dismiss guidance |
+| `Ctrl+F` | Toggle listen / send |
+| `Ctrl+N` | Open settings |
+| `Esc` | Dismiss guidance |
+
+---
+
+## Settings
+
+Press `Ctrl+N` to open the settings panel:
+- **Voice**: Local (browser TTS) or ElevenLabs
+- **ElevenLabs API Key** + **Voice ID** for premium voice
 
 ---
 
@@ -81,14 +77,14 @@ npm start               # launch Clicky
 │   └──────────────────────────────────────┘  │
 └─────────────────────────────────────────────┘
          ↕ desktopCapturer (screenshot)
-         ↕ globalShortcut (hotkey)
-         ↕ Web Speech API (voice → text)
-         ↕ SpeechSynthesis (text → voice)
+         ↕ globalShortcut (Ctrl+F)
+         ↕ @xenova/transformers Whisper (voice → text)
+         ↕ SpeechSynthesis / ElevenLabs (text → voice)
          ↕ fetch → localhost:11434
 
 ┌──────────────────────────────┐
 │  Ollama (local AI server)    │
-│  Model: gemma3:4b (vision)   │
+│  Model: gemma4 (vision)      │
 │  Input:  screenshot + query  │
 │  Output: {x, y, label, steps}│
 └──────────────────────────────┘
@@ -99,18 +95,14 @@ npm start               # launch Clicky
 ## Project Structure
 
 ```
-clicky-win/
+navi/
 ├── src/
 │   ├── main.js       # Electron main process
-│   │                 # - transparent overlay window
-│   │                 # - global hotkeys
-│   │                 # - screen capture
-│   │                 # - Ollama/Gemma API calls
 │   ├── preload.js    # Secure bridge (main ↔ renderer)
-│   └── overlay.html  # Full UI: buddy, bubble, voice, animation
-├── assets/
-│   └── icon.ico      # App icon (add your own)
-├── setup.ps1         # One-click Windows setup script
+│   ├── overlay.html  # Full UI: buddy, bubble, voice, animation
+│   └── setup.html    # First-run setup wizard
+├── docs/
+│   └── index.html    # GitHub Pages landing page
 ├── package.json
 └── README.md
 ```
@@ -120,46 +112,15 @@ clicky-win/
 ## Building a distributable `.exe`
 
 ```powershell
-npm run build
-# Output: dist/Clicky Setup 1.0.0.exe
+$env:CSC_IDENTITY_AUTO_DISCOVERY="false"; npm run build
+# Output: dist/Navi Setup 1.0.0.exe
 ```
-
----
-
-## Customising the AI model
-
-In `src/main.js`, change:
-
-```js
-const VISION_MODEL = 'gemma3:4b';  // swap for any Ollama vision model
-```
-
-Other good options:
-- `llava:7b` — LLaVA 7B (older but reliable)
-- `moondream` — very fast, smaller
-- `minicpm-v` — great accuracy
 
 ---
 
 ## Privacy
 
-Everything runs **100% locally**. Your screen is never sent to any cloud service. Ollama runs on your machine, Gemma runs on your GPU/CPU.
-
----
-
-## Troubleshooting
-
-**Buddy doesn't appear**
-→ Check that Electron launched (look in system tray / taskbar)
-
-**"Ollama not detected" warning**
-→ Run `ollama serve` in a terminal first
-
-**Voice not working**
-→ Check Windows microphone permissions for Electron
-
-**Gemma gives wrong coordinates**
-→ Try a larger model: `ollama pull gemma3:12b`
+Everything runs **100% locally**. Your screen, voice, and questions never leave your machine. Ollama and Whisper run entirely on your GPU/CPU.
 
 ---
 
