@@ -219,6 +219,7 @@
   .settings-title { font-size: 10px; color: var(--accent); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 14px; }
   .settings-row { margin-bottom: 14px; }
   .settings-label { font-size: 11px; color: var(--text-dim); margin-bottom: 6px; }
+  .vision-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
   .tts-toggle { display: flex; gap: 6px; }
   .tts-btn {
     flex: 1; padding: 7px; border-radius: 8px;
@@ -281,7 +282,30 @@
 
 <div id="settings-panel">
   <div class="settings-title">navi settings</div>
+
   <div class="settings-row">
+    <div class="settings-label">Vision</div>
+    <div class="vision-grid">
+      <button class="tts-btn active" id="vis-ollama">Local (Ollama)</button>
+      <button class="tts-btn" id="vis-gemini">Gemini</button>
+      <button class="tts-btn" id="vis-openai">OpenAI</button>
+      <button class="tts-btn" id="vis-anthropic">Anthropic</button>
+    </div>
+    <div id="ollama-fields" style="margin-top:8px">
+      <div class="settings-label">Model Name</div>
+      <div style="display:flex; gap:6px; align-items:center">
+        <input class="settings-input" id="ollama-model" type="text" placeholder="gemma4" style="flex:1">
+        <button id="ollama-check-btn" style="padding:7px 10px; background:rgba(255,255,255,0.07); border:1px solid var(--border); border-radius:8px; color:var(--text); font-size:11px; cursor:pointer; white-space:nowrap">Check</button>
+      </div>
+      <div id="ollama-status" style="margin-top:6px; font-size:11px; color:var(--text-dim)"></div>
+    </div>
+    <div id="vision-key-row" style="display:none; margin-top:8px">
+      <div class="settings-label" id="vision-key-label">API Key</div>
+      <input class="settings-input" id="vision-key" type="password" placeholder="API key...">
+    </div>
+  </div>
+
+  <div class="settings-row" style="margin-top:10px">
     <div class="settings-label">Voice</div>
     <div class="tts-toggle">
       <button class="tts-btn active" id="btn-local">Local (browser)</button>
@@ -294,6 +318,7 @@
       <input class="settings-input" id="el-voice" type="text" placeholder="fS4RM86GDhM251CjumZM">
     </div>
   </div>
+
   <button class="settings-save" id="settings-save-btn">Save</button>
   <button class="settings-quit" id="settings-quit-btn">Quit Navi</button>
 </div>
@@ -506,6 +531,59 @@ const elVoice       = document.getElementById('el-voice');
 const saveBtn       = document.getElementById('settings-save-btn');
 const quitBtn       = document.getElementById('settings-quit-btn');
 
+// Vision provider
+const visButtons   = { ollama: document.getElementById('vis-ollama'), gemini: document.getElementById('vis-gemini'), openai: document.getElementById('vis-openai'), anthropic: document.getElementById('vis-anthropic') };
+const visionKeyRow = document.getElementById('vision-key-row');
+const visionKeyLbl = document.getElementById('vision-key-label');
+const visionKeyInp = document.getElementById('vision-key');
+const KEY_LABELS   = { gemini: 'Gemini API Key', openai: 'OpenAI API Key', anthropic: 'Anthropic API Key' };
+const KEY_HINTS    = { gemini: 'AIza...', openai: 'sk-...', anthropic: 'sk-ant-...' };
+let currentVision  = 'ollama';
+
+const ollamaFields   = document.getElementById('ollama-fields');
+const ollamaModelInp = document.getElementById('ollama-model');
+const ollamaStatus   = document.getElementById('ollama-status');
+const ollamaCheckBtn = document.getElementById('ollama-check-btn');
+
+function applyVisionToggle(provider) {
+  currentVision = provider;
+  Object.entries(visButtons).forEach(([k, btn]) => btn.classList.toggle('active', k === provider));
+  const cloud = provider !== 'ollama';
+  ollamaFields.style.display  = cloud ? 'none' : 'block';
+  visionKeyRow.style.display  = cloud ? 'block' : 'none';
+  if (cloud) {
+    visionKeyLbl.textContent = KEY_LABELS[provider];
+    visionKeyInp.placeholder = KEY_HINTS[provider];
+    const keyMap = { gemini: naviConfig.geminiKey, openai: naviConfig.openaiKey, anthropic: naviConfig.anthropicKey };
+    visionKeyInp.value = keyMap[provider] || '';
+    ollamaStatus.textContent = '';
+  }
+}
+
+async function runOllamaCheck() {
+  ollamaStatus.style.color = 'var(--text-dim)';
+  ollamaStatus.textContent = 'Checking…';
+  const status = await window.navi.checkOllama();
+  if (!status.running) {
+    ollamaStatus.style.color = '#ff6b6b';
+    ollamaStatus.textContent = '✗ Ollama not detected — run: ollama serve';
+    return;
+  }
+  const model = ollamaModelInp.value.trim() || 'gemma4';
+  const found = status.models.some(m => m === model || m.startsWith(model + ':'));
+  if (found) {
+    ollamaStatus.style.color = 'var(--accent)';
+    ollamaStatus.textContent = `✓ Ollama running · ${model} found`;
+  } else {
+    ollamaStatus.style.color = '#ffb347';
+    ollamaStatus.textContent = `✗ "${model}" not found · run: ollama pull ${model}`;
+    if (status.models.length) ollamaStatus.textContent += `\nInstalled: ${status.models.join(', ')}`;
+  }
+}
+
+ollamaCheckBtn.addEventListener('click', runOllamaCheck);
+Object.entries(visButtons).forEach(([k, btn]) => btn.addEventListener('click', () => applyVisionToggle(k)));
+
 function applyTTSToggle(tts) {
   btnLocal.classList.toggle('active', tts === 'local');
   btnEleven.classList.toggle('active', tts === 'elevenlabs');
@@ -533,6 +611,11 @@ saveBtn.addEventListener('click', async e => {
   naviConfig.tts               = btnEleven.classList.contains('active') ? 'elevenlabs' : 'local';
   naviConfig.elevenLabsKey     = elKey.value.trim();
   naviConfig.elevenLabsVoiceId = elVoice.value.trim() || 'fS4RM86GDhM251CjumZM';
+  naviConfig.visionProvider    = currentVision;
+  naviConfig.ollamaModel       = ollamaModelInp.value.trim() || 'gemma4';
+  if (currentVision === 'gemini')    naviConfig.geminiKey    = visionKeyInp.value.trim();
+  if (currentVision === 'openai')    naviConfig.openaiKey    = visionKeyInp.value.trim();
+  if (currentVision === 'anthropic') naviConfig.anthropicKey = visionKeyInp.value.trim();
   await window.navi.saveConfig(naviConfig);
   settingsPanel.classList.remove('show');
   window.navi.setInteractive(false);
@@ -771,8 +854,10 @@ async function init() {
   // Load saved config
   naviConfig = await window.navi.getConfig();
   applyTTSToggle(naviConfig.tts);
-  if (naviConfig.elevenLabsKey)    elKey.value   = naviConfig.elevenLabsKey;
+  if (naviConfig.elevenLabsKey)     elKey.value   = naviConfig.elevenLabsKey;
   if (naviConfig.elevenLabsVoiceId) elVoice.value = naviConfig.elevenLabsVoiceId;
+  applyVisionToggle(naviConfig.visionProvider || 'ollama');
+  ollamaModelInp.value = naviConfig.ollamaModel || 'gemma4';
 
   const status = await window.navi.checkOllama();
   if (!status.running) {

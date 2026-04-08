@@ -178,25 +178,19 @@ ipcMain.handle('transcribe-audio', async (_, { audioBase64 }) => {
   }
 });
 
-// ── Gemma 4 vision ──────────────────────────────────────────────────────────
+// ── Vision routing ───────────────────────────────────────────────────────────
 ipcMain.handle('ask-gemma', async (_, { question, screenshotB64, snapW, snapH }) => {
+  const config   = loadConfig();
+  const provider = config.visionProvider || 'ollama';
+  const prompt   = buildPrompt(question, snapW || SNAP_W, snapH || SNAP_H);
   try {
-    const resp = await fetch(`${OLLAMA_URL}/api/generate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: VISION_MODEL,
-        prompt: buildPrompt(question, snapW || SNAP_W, snapH || SNAP_H),
-        images: [screenshotB64],
-        stream: false,
-        options: { temperature: 0.2 },
-      }),
-    });
+    let text;
+    if      (provider === 'gemini')    text = await askGemini(prompt, screenshotB64, config.geminiKey);
+    else if (provider === 'openai')    text = await askOpenAI(prompt, screenshotB64, config.openaiKey);
+    else if (provider === 'anthropic') text = await askAnthropic(prompt, screenshotB64, config.anthropicKey);
+    else                               text = await askOllama(prompt, screenshotB64);
 
-    if (!resp.ok) throw new Error(`Ollama ${resp.status}: ${await resp.text()}`);
-
-    const data  = await resp.json();
-    const text  = data.response || '';
+    if (!text) throw new Error('Model returned an empty response. Check your API key or model setup.');
     const match = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/(\{[\s\S]*\})/);
     if (!match) return { success: true, raw: text, parsed: null };
     return { success: true, raw: text, parsed: JSON.parse(match[1]) };
@@ -205,8 +199,83 @@ ipcMain.handle('ask-gemma', async (_, { question, screenshotB64, snapW, snapH })
   }
 });
 
+async function askOllama(prompt, base64) {
+  const model = loadConfig().ollamaModel || VISION_MODEL;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60000);
+  const resp = await fetch(`${OLLAMA_URL}/api/generate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, prompt, images: [base64], stream: false, options: { temperature: 0.2 } }),
+    signal: controller.signal,
+  });
+  clearTimeout(timeout);
+  if (!resp.ok) throw new Error(`Ollama ${resp.status}: ${await resp.text()}`);
+  const data = await resp.json();
+  const text = data.response || '';
+  if (!text) throw new Error(`Empty response from Ollama. Is "${model}" pulled? Run: ollama pull ${model}`);
+  return text;
+}
+
+async function askGemini(prompt, base64, apiKey) {
+  if (!apiKey) throw new Error('Gemini API key not set — open Settings (Ctrl+N).');
+  const resp = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: base64 } }] }],
+        generationConfig: { temperature: 0.2 },
+      }),
+    }
+  );
+  if (!resp.ok) throw new Error(`Gemini ${resp.status}: ${await resp.text()}`);
+  const data = await resp.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+}
+
+async function askOpenAI(prompt, base64, apiKey) {
+  if (!apiKey) throw new Error('OpenAI API key not set — open Settings (Ctrl+N).');
+  const resp = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages: [{ role: 'user', content: [
+        { type: 'text', text: prompt },
+        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64}` } },
+      ]}],
+      max_tokens: 512,
+      temperature: 0.2,
+    }),
+  });
+  if (!resp.ok) throw new Error(`OpenAI ${resp.status}: ${await resp.text()}`);
+  const data = await resp.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
+async function askAnthropic(prompt, base64, apiKey) {
+  if (!apiKey) throw new Error('Anthropic API key not set — open Settings (Ctrl+N).');
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 512,
+      messages: [{ role: 'user', content: [
+        { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: base64 } },
+        { type: 'text', text: prompt },
+      ]}],
+    }),
+  });
+  if (!resp.ok) throw new Error(`Anthropic ${resp.status}: ${await resp.text()}`);
+  const data = await resp.json();
+  return data.content?.[0]?.text || '';
+}
+
 function buildPrompt(question, snapW, snapH) {
-  return `You are Clicky, an AI screen assistant. The screenshot is exactly ${snapW}x${snapH} pixels. The user asked: "${question}"
+  return `You are Navi, an AI screen assistant. The screenshot is exactly ${snapW}x${snapH} pixels. The user asked: "${question}"
 
 Look at the screenshot carefully. Find the EXACT UI element that best answers the question and respond ONLY with this JSON:
 \`\`\`json
