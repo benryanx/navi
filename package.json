@@ -5,6 +5,7 @@
   "author": "Navi",
   "main": "src/main.js",
   "scripts": {
+    "test": "node --test",
     "start": "electron .",
     "dev": "electron . --dev",
     "build": "electron-builder --win --x64"

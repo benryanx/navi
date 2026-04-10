@@ -330,10 +330,12 @@
   <button id="settings-btn" title="Settings">⚙</button>
 </div>
 
+<script src="./overlay-interactivity.js"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────────────
 // State
 // ─────────────────────────────────────────────────────────────────────────
+const { isPointInRect, shouldEnableOverlayInteractivity } = window.NaviOverlayInteractivity;
 const State = { IDLE: 'idle', LISTEN: 'listen', THINK: 'think', GUIDE: 'guide' };
 let state = State.IDLE;
 let whisperReady = false;
@@ -343,6 +345,7 @@ let bx = window.innerWidth / 2;
 let by = window.innerHeight - 120;
 let targetBx = bx, targetBy = by;
 let isFollowingMouse = true;
+let isHoveringControls = false;
 
 // ─────────────────────────────────────────────────────────────────────────
 // DOM refs
@@ -356,6 +359,7 @@ const hereLabel  = document.getElementById('here-label');
 const targetDot  = document.getElementById('target-dot');
 const statusDot  = document.getElementById('status-dot');
 const statusText = document.getElementById('status-text');
+const statusBar  = document.getElementById('status-bar');
 const micBtn     = document.getElementById('mic-btn');
 const transcript = document.getElementById('transcript');
 const ollamaWarn = document.getElementById('ollama-warn');
@@ -374,6 +378,13 @@ const ollamaWarn = document.getElementById('ollama-warn');
 
 document.addEventListener('mousemove', e => {
   if (isFollowingMouse) { targetBx = e.clientX + 44; targetBy = e.clientY - 20; }
+  updateHoverInteractivity(e);
+});
+
+document.addEventListener('mouseleave', () => {
+  if (!isHoveringControls) return;
+  isHoveringControls = false;
+  syncOverlayInteractivity();
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -388,7 +399,7 @@ function setState(s) {
       buddyFace.textContent = '✦';
       statusDot.className = '';
       statusText.textContent = whisperReady
-        ? 'press Ctrl+F to speak'
+        ? 'Ctrl+F speak · Ctrl+N settings · Ctrl+Q quit'
         : 'loading whisper…';
       isFollowingMouse = true;
       clearTimeout(autoDismissTimer);
@@ -590,10 +601,36 @@ function applyTTSToggle(tts) {
   elFields.classList.toggle('show', tts === 'elevenlabs');
 }
 
+function setSettingsOpen(open) {
+  settingsPanel.classList.toggle('show', open);
+  syncOverlayInteractivity();
+}
+
+function updateHoverInteractivity(event) {
+  const pointer = { x: event.clientX, y: event.clientY };
+  const overStatusBar = isPointInRect(pointer, statusBar.getBoundingClientRect());
+  const overSettings = settingsPanel.classList.contains('show')
+    && isPointInRect(pointer, settingsPanel.getBoundingClientRect());
+  const nextValue = overStatusBar || overSettings;
+
+  if (nextValue === isHoveringControls) return;
+  isHoveringControls = nextValue;
+  syncOverlayInteractivity();
+}
+
+function syncOverlayInteractivity() {
+  window.navi.setInteractive(
+    shouldEnableOverlayInteractivity({
+      isHoveringControls,
+      isSettingsOpen: settingsPanel.classList.contains('show'),
+      isRecording,
+    })
+  );
+}
+
 function toggleSettings() {
   const opening = !settingsPanel.classList.contains('show');
-  settingsPanel.classList.toggle('show', opening);
-  window.navi.setInteractive(opening);
+  setSettingsOpen(opening);
 }
 
 settingsBtn.addEventListener('click', e => {
@@ -617,8 +654,7 @@ saveBtn.addEventListener('click', async e => {
   if (currentVision === 'openai')    naviConfig.openaiKey    = visionKeyInp.value.trim();
   if (currentVision === 'anthropic') naviConfig.anthropicKey = visionKeyInp.value.trim();
   await window.navi.saveConfig(naviConfig);
-  settingsPanel.classList.remove('show');
-  window.navi.setInteractive(false);
+  setSettingsOpen(false);
 });
 
 quitBtn.addEventListener('click', () => window.navi.quitApp());
@@ -626,8 +662,7 @@ quitBtn.addEventListener('click', () => window.navi.quitApp());
 // Esc also closes settings
 window.navi.onHotkeyDismiss(() => {
   if (settingsPanel.classList.contains('show')) {
-    settingsPanel.classList.remove('show');
-    window.navi.setInteractive(false);
+    setSettingsOpen(false);
     return;
   }
   setState(State.IDLE);
@@ -648,7 +683,6 @@ const SAMPLE_RATE = 16000;
 async function startRecording() {
   if (isRecording || !whisperReady) return;
   try {
-    window.navi.setInteractive(true);
     micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     audioCtx   = new AudioContext();
     scriptProc = audioCtx.createScriptProcessor(4096, 1, 1);
@@ -668,13 +702,14 @@ async function startRecording() {
     silent.connect(audioCtx.destination);
 
     isRecording = true;
+    syncOverlayInteractivity();
     const label = micStream.getAudioTracks()[0]?.label || 'unknown mic';
     setState(State.LISTEN);
     statusText.textContent = '🎙 ' + label.slice(0, 40) + ' — press Ctrl+F to send';
   } catch (err) {
     console.error('Mic error:', err);
     statusText.textContent = '⚠ mic: ' + err.message;
-    window.navi.setInteractive(false);
+    syncOverlayInteractivity();
   }
 }
 
@@ -688,7 +723,7 @@ async function stopRecording() {
   scriptProc.disconnect();
   micStream.getTracks().forEach(t => t.stop());
   await audioCtx.close();
-  window.navi.setInteractive(false);
+  syncOverlayInteractivity();
 
   const samples = new Float32Array(audioSamples);
   audioSamples  = [];
@@ -815,7 +850,12 @@ window.navi.onHotkeyToggle(() => {
 });
 
 window.navi.onHotkeyDismiss(() => {  // legacy — handled above, kept for recording cleanup
-  if (isRecording) { isRecording = false; scriptProc?.disconnect(); micStream?.getTracks().forEach(t => t.stop()); }
+  if (isRecording) {
+    isRecording = false;
+    scriptProc?.disconnect();
+    micStream?.getTracks().forEach(t => t.stop());
+    syncOverlayInteractivity();
+  }
   window.speechSynthesis?.cancel();
 });
 
@@ -825,8 +865,16 @@ micBtn.addEventListener('click', e => {
   else startRecording();
 });
 
+statusBar.addEventListener('click', e => e.stopPropagation());
+settingsPanel.addEventListener('click', e => e.stopPropagation());
+
 document.addEventListener('click', e => {
   if (e.target === micBtn) return;
+  if (e.target === settingsBtn) return;
+  if (settingsPanel.classList.contains('show')) {
+    setSettingsOpen(false);
+    return;
+  }
   if (state === State.GUIDE) setState(State.IDLE);
 });
 
