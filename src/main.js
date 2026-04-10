@@ -117,6 +117,9 @@ function registerHotkeys() {
   globalShortcut.register('CommandOrControl+N', () => {
     overlayWin.webContents.send('hotkey-settings');
   });
+  globalShortcut.register('CommandOrControl+Q', () => {
+    app.quit();
+  });
 }
 
 // ── Screen capture ──────────────────────────────────────────────────────────
