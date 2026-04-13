@@ -1,7 +1,9 @@
 const { app, BrowserWindow, globalShortcut, ipcMain, screen, desktopCapturer, session } = require('electron');
+const { spawn } = require('child_process');
 const path = require('path');
 const fs   = require('fs');
 const os   = require('os');
+const { getLanguage, getTranscriberModel, getTranscriptionOptions, getTtsLang } = require('./language-options');
 
 // ── Config ─────────────────────────────────────────────────────────────────
 const OLLAMA_URL   = 'http://127.0.0.1:11434';
@@ -11,9 +13,12 @@ const VISION_MODEL = 'gemma4';
 function configPath() {
   return path.join(app.getPath('userData'), 'navi-config.json');
 }
+function defaultConfig() {
+  return { tts: 'local', language: 'auto', elevenLabsKey: '', elevenLabsVoiceId: 'fS4RM86GDhM251CjumZM' };
+}
 function loadConfig() {
-  try { return JSON.parse(fs.readFileSync(configPath(), 'utf8')); }
-  catch { return { tts: 'local', elevenLabsKey: '', elevenLabsVoiceId: 'fS4RM86GDhM251CjumZM' }; }
+  try { return { ...defaultConfig(), ...JSON.parse(fs.readFileSync(configPath(), 'utf8')) }; }
+  catch { return defaultConfig(); }
 }
 function saveConfig(cfg) {
   fs.writeFileSync(configPath(), JSON.stringify(cfg, null, 2));
@@ -23,6 +28,59 @@ ipcMain.handle('get-config', ()      => loadConfig());
 ipcMain.handle('save-config', (_, c) => { saveConfig(c); return true; });
 
 // ── ElevenLabs TTS ──────────────────────────────────────────────────────────
+let currentSpeechProcess = null;
+
+function stopSystemSpeech() {
+  if (!currentSpeechProcess || currentSpeechProcess.killed) return;
+  currentSpeechProcess.kill();
+  currentSpeechProcess = null;
+}
+
+ipcMain.handle('speak-system', async (_, { text, lang }) => {
+  try {
+    stopSystemSpeech();
+
+    const script = `
+Add-Type -AssemblyName System.Speech
+$text = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String($env:NAVI_TTS_TEXT_B64))
+$lang = $env:NAVI_TTS_LANG
+$prefix = ($lang -split '-')[0]
+$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer
+$voices = $synth.GetInstalledVoices() | Where-Object { $_.Enabled }
+$voice = $voices | Where-Object { $_.VoiceInfo.Culture.Name -eq $lang } | Select-Object -First 1
+if (-not $voice) { $voice = $voices | Where-Object { $_.VoiceInfo.Culture.Name -like "$prefix-*" } | Select-Object -First 1 }
+if (-not $voice -and $prefix -ne 'en') { $voice = $voices | Where-Object { $_.VoiceInfo.Culture.Name -like "en-*" } | Select-Object -First 1 }
+if ($voice) { $synth.SelectVoice($voice.VoiceInfo.Name) }
+$synth.Rate = 0
+$synth.Speak($text)
+`;
+    const encoded = Buffer.from(script, 'utf16le').toString('base64');
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], {
+      windowsHide: true,
+      stdio: 'ignore',
+      env: {
+        ...process.env,
+        NAVI_TTS_TEXT_B64: Buffer.from(text, 'utf8').toString('base64'),
+        NAVI_TTS_LANG: lang || 'en-US',
+      },
+    });
+
+    currentSpeechProcess = child;
+    child.once('exit', () => {
+      if (currentSpeechProcess === child) currentSpeechProcess = null;
+    });
+    child.once('error', () => {
+      if (currentSpeechProcess === child) currentSpeechProcess = null;
+    });
+
+    return { success: true };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+});
+
+ipcMain.on('stop-system-speech', () => stopSystemSpeech());
+
 ipcMain.handle('speak-elevenlabs', async (_, { text, apiKey, voiceId }) => {
   try {
     const resp = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
@@ -43,20 +101,22 @@ ipcMain.handle('speak-elevenlabs', async (_, { text, apiKey, voiceId }) => {
 });
 
 // ── Whisper pipeline (lazy-loaded on first transcription) ──────────────────
-let _transcriber = null;
+const _transcribers = new Map();
 
-async function getTranscriber(win) {
-  if (_transcriber) return _transcriber;
+async function getTranscriber(win, language = loadConfig().language) {
+  const model = getTranscriberModel(language || 'auto');
+  if (_transcribers.has(model)) return _transcribers.get(model);
 
   win.webContents.send('transcriber-status', 'loading');
   const { pipeline, env } = await import('@xenova/transformers');
   env.backends.onnx.wasm.numThreads = 1;
-  _transcriber = await pipeline(
+  const transcriber = await pipeline(
     'automatic-speech-recognition',
-    'Xenova/whisper-base.en'
+    model
   );
+  _transcribers.set(model, transcriber);
   win.webContents.send('transcriber-status', 'ready');
-  return _transcriber;
+  return transcriber;
 }
 
 // ── Windows ────────────────────────────────────────────────────────────────
@@ -100,7 +160,7 @@ function createOverlay() {
 
   // Pre-warm the Whisper model in the background after window loads
   overlayWin.webContents.once('did-finish-load', () => {
-    getTranscriber(overlayWin).catch(err =>
+    getTranscriber(overlayWin, loadConfig().language).catch(err =>
       console.error('Whisper preload failed:', err)
     );
   });
@@ -165,9 +225,10 @@ ipcMain.handle('transcribe-audio', async (_, { audioBase64 }) => {
   try {
     const wavBuf = Buffer.from(audioBase64, 'base64');
     const { float32, sampleRate } = decodeWAV(wavBuf);
+    const language = loadConfig().language || 'auto';
 
-    const transcriber = await getTranscriber(overlayWin);
-    const result = await transcriber(float32, { sampling_rate: sampleRate });
+    const transcriber = await getTranscriber(overlayWin, language);
+    const result = await transcriber(float32, getTranscriptionOptions(language, sampleRate));
     const text = (result.text || '').trim();
 
     // Filter Whisper hallucination tokens (noise, silence, music, etc.)
@@ -185,7 +246,7 @@ ipcMain.handle('transcribe-audio', async (_, { audioBase64 }) => {
 ipcMain.handle('ask-gemma', async (_, { question, screenshotB64, snapW, snapH }) => {
   const config   = loadConfig();
   const provider = config.visionProvider || 'ollama';
-  const prompt   = buildPrompt(question, snapW || SNAP_W, snapH || SNAP_H);
+  const prompt   = buildPrompt(question, snapW || SNAP_W, snapH || SNAP_H, responseLanguageName(config.language, question));
   try {
     let text;
     if      (provider === 'gemini')    text = await askGemini(prompt, screenshotB64, config.geminiKey);
@@ -277,7 +338,14 @@ async function askAnthropic(prompt, base64, apiKey) {
   return data.content?.[0]?.text || '';
 }
 
-function buildPrompt(question, snapW, snapH) {
+function responseLanguageName(setting, question) {
+  if (setting && setting !== 'auto') return getLanguage(setting).label;
+
+  const inferred = getTtsLang('auto', question, 'en-US').split('-')[0];
+  return getLanguage(inferred).label;
+}
+
+function buildPrompt(question, snapW, snapH, responseLanguage) {
   return `You are Navi, an AI screen assistant. The screenshot is exactly ${snapW}x${snapH} pixels. The user asked: "${question}"
 
 Look at the screenshot carefully. Find the EXACT UI element that best answers the question and respond ONLY with this JSON:
@@ -294,6 +362,7 @@ Look at the screenshot carefully. Find the EXACT UI element that best answers th
 \`\`\`
 Rules:
 - targetX/targetY are PIXEL coordinates (integers) within the ${snapW}x${snapH} image — point to the CENTER of the element
+- label, explanation, and steps must be written in ${responseLanguage || 'the same language as the user question'}
 - label is a short name for the element (max 5 words)
 - explanation is 1-2 sentences
 - steps are 1-4 sequential actions needed

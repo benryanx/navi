@@ -11,6 +11,7 @@
     --accent-dim:  rgba(200,240,74,0.15);
     --accent-glow: rgba(200,240,74,0.4);
     --red:         #ff5a5a;
+    --think:       #4aa3ff;
     --surface:     rgba(18,18,18,0.92);
     --border:      rgba(255,255,255,0.1);
     --text:        #e8e8e8;
@@ -30,7 +31,7 @@
   /* ── BUDDY ──────────────────────────────────────────────────────────── */
   #buddy {
     position: fixed;
-    width: 52px; height: 52px;
+    width: 20px; height: 20px;
     pointer-events: none;
     z-index: 9000;
     transform: translate(-50%, -50%);
@@ -39,34 +40,26 @@
   }
 
   #buddy-ring {
-    position: absolute; inset: 0;
-    border-radius: 50%;
-    border: 2px solid var(--accent);
-    opacity: 0;
-  }
-  #buddy.guide #buddy-ring {
-    opacity: 1;
-    animation: ring-ping 1.2s ease-out infinite;
+    display: none;
   }
 
   #buddy-face {
-    position: absolute; inset: 4px;
-    background: var(--accent);
-    border-radius: 50%;
+    position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
-    font-size: 22px;
-    box-shadow: 0 0 18px var(--accent-glow), 0 4px 20px rgba(0,0,0,0.5);
-    transition: transform 0.15s ease, background 0.2s;
+    font-size: 18px;
+    line-height: 1;
+    color: var(--accent);
+    text-shadow: 0 0 10px var(--accent-glow), 0 2px 10px rgba(0,0,0,0.35);
+    transition: transform 0.15s ease, color 0.2s, text-shadow 0.2s;
   }
 
-  #buddy.idle   #buddy-face { background: var(--accent); }
-  #buddy.listen #buddy-face { background: var(--red); animation: pulse 0.8s ease-in-out infinite; }
-  #buddy.think  #buddy-face { background: #4af0c8; animation: glow 1.5s linear infinite; }
-  #buddy.guide  #buddy-face { background: var(--accent); }
+  #buddy.idle   #buddy-face { color: var(--accent); }
+  #buddy.listen #buddy-face { color: var(--red); animation: pulse 0.8s ease-in-out infinite; }
+  #buddy.think  #buddy-face { color: var(--think); animation: glow 1.5s linear infinite; }
+  #buddy.guide  #buddy-face { color: var(--accent); }
 
-  @keyframes pulse  { 0%,100%{transform:scale(1);box-shadow:0 0 18px rgba(255,90,90,.5)} 50%{transform:scale(1.08);box-shadow:0 0 32px rgba(255,90,90,.8)} }
-  @keyframes glow   { 0%,100%{box-shadow:0 0 20px rgba(74,240,200,.6)} 50%{box-shadow:0 0 40px rgba(74,240,200,.9)} }
-  @keyframes ring-ping { 0%{transform:scale(1);opacity:1} 100%{transform:scale(2.2);opacity:0} }
+  @keyframes pulse  { 0%,100%{transform:scale(1);text-shadow:0 0 8px rgba(255,90,90,.45), 0 2px 10px rgba(0,0,0,0.35)} 50%{transform:scale(1.12);text-shadow:0 0 14px rgba(255,90,90,.8), 0 2px 12px rgba(0,0,0,0.35)} }
+  @keyframes glow   { 0%,100%{transform:scale(1);text-shadow:0 0 8px rgba(74,163,255,.5), 0 2px 10px rgba(0,0,0,0.35)} 50%{transform:scale(1.1);text-shadow:0 0 14px rgba(74,163,255,.85), 0 2px 12px rgba(0,0,0,0.35)} }
 
   /* ── SPEECH BUBBLE ──────────────────────────────────────────────────── */
   #bubble {
@@ -143,7 +136,7 @@
     flex-shrink: 0; transition: background .3s, box-shadow .3s;
   }
   #status-dot.red  { background: var(--red); box-shadow: 0 0 8px var(--red); animation: pulse .8s infinite; }
-  #status-dot.teal { background: #4af0c8; box-shadow: 0 0 8px #4af0c8; }
+  #status-dot.teal { background: var(--think); box-shadow: 0 0 8px var(--think); }
 
   #status-text { font-size: 11px; color: var(--text-dim); letter-spacing: .04em; min-width: 200px; text-align: center; }
 
@@ -306,6 +299,11 @@
   </div>
 
   <div class="settings-row" style="margin-top:10px">
+    <div class="settings-label">Language</div>
+    <select class="settings-input" id="language-select"></select>
+  </div>
+
+  <div class="settings-row" style="margin-top:10px">
     <div class="settings-label">Voice</div>
     <div class="tts-toggle">
       <button class="tts-btn active" id="btn-local">Local (browser)</button>
@@ -331,15 +329,18 @@
 </div>
 
 <script src="./overlay-interactivity.js"></script>
+<script src="./language-options.js"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────────────
 // State
 // ─────────────────────────────────────────────────────────────────────────
 const { isPointInRect, shouldEnableOverlayInteractivity } = window.NaviOverlayInteractivity;
+const { LANGUAGES, getTtsLang } = window.NaviLanguageOptions;
 const State = { IDLE: 'idle', LISTEN: 'listen', THINK: 'think', GUIDE: 'guide' };
 let state = State.IDLE;
 let whisperReady = false;
 let autoDismissTimer = null;
+let currentSpeechLang = null;
 
 let bx = window.innerWidth / 2;
 let by = window.innerHeight - 120;
@@ -377,7 +378,7 @@ const ollamaWarn = document.getElementById('ollama-warn');
 })();
 
 document.addEventListener('mousemove', e => {
-  if (isFollowingMouse) { targetBx = e.clientX + 44; targetBy = e.clientY - 20; }
+  if (isFollowingMouse) { targetBx = e.clientX + 28; targetBy = e.clientY + 18; }
   updateHoverInteractivity(e);
 });
 
@@ -407,7 +408,7 @@ function setState(s) {
       break;
 
     case State.LISTEN:
-      buddyFace.textContent = '🎙';
+      buddyFace.textContent = '✦';
       statusDot.className = 'red';
       statusText.textContent = 'listening… press Ctrl+F to send';
       micBtn.classList.add('active');
@@ -415,7 +416,7 @@ function setState(s) {
       break;
 
     case State.THINK:
-      buddyFace.textContent = '◌';
+      buddyFace.textContent = '✦';
       statusDot.className = 'teal';
       micBtn.classList.remove('active');
       break;
@@ -485,7 +486,7 @@ function flyToTarget(nx, ny, label, explanation, steps) {
   setTimeout(() => {
     hereLabel.classList.add('show');
     showBubble(explanation, steps);
-    speak(explanation);
+    speak(explanation, currentSpeechLang);
 
     // Auto-dismiss after 5 seconds — buddy follows cursor again
     clearTimeout(autoDismissTimer);
@@ -497,22 +498,17 @@ function hideGuide() { targetDot.classList.remove('show'); hereLabel.classList.r
 // ─────────────────────────────────────────────────────────────────────────
 // TTS — local or ElevenLabs depending on config
 // ─────────────────────────────────────────────────────────────────────────
-let naviConfig = { tts: 'local', elevenLabsKey: '', elevenLabsVoiceId: 'fS4RM86GDhM251CjumZM' };
+let naviConfig = { tts: 'local', language: 'auto', elevenLabsKey: '', elevenLabsVoiceId: 'fS4RM86GDhM251CjumZM' };
 
-function speakLocal(text) {
-  if (!window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const utt = new SpeechSynthesisUtterance(text);
-  utt.rate = 1.05;
-  const voices = speechSynthesis.getVoices();
-  const preferred = voices.find(v => v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Zira'));
-  if (preferred) utt.voice = preferred;
-  window.speechSynthesis.speak(utt);
+async function speakLocal(text, preferredLang = null) {
+  const lang = preferredLang || getTtsLang(naviConfig.language || 'auto', text, 'en-US');
+  const res = await window.navi.speakSystem(text, lang);
+  if (!res?.success) console.warn('System TTS failed:', res?.error);
 }
 
-async function speakElevenLabs(text) {
+async function speakElevenLabs(text, preferredLang = null) {
   const res = await window.navi.speakElevenLabs(text, naviConfig.elevenLabsKey, naviConfig.elevenLabsVoiceId);
-  if (!res.success) { speakLocal(text); return; } // fallback to local on error
+  if (!res.success) { speakLocal(text, preferredLang); return; } // fallback to local on error
   const bytes = Uint8Array.from(atob(res.audio), c => c.charCodeAt(0));
   const blob  = new Blob([bytes], { type: 'audio/mpeg' });
   const url   = URL.createObjectURL(blob);
@@ -521,11 +517,11 @@ async function speakElevenLabs(text) {
   audio.onended = () => URL.revokeObjectURL(url);
 }
 
-function speak(text) {
+function speak(text, preferredLang = null) {
   if (naviConfig.tts === 'elevenlabs' && naviConfig.elevenLabsKey) {
-    speakElevenLabs(text);
+    speakElevenLabs(text, preferredLang);
   } else {
-    speakLocal(text);
+    speakLocal(text, preferredLang);
   }
 }
 
@@ -539,6 +535,7 @@ const btnEleven     = document.getElementById('btn-eleven');
 const elFields      = document.getElementById('elevenlabs-fields');
 const elKey         = document.getElementById('el-key');
 const elVoice       = document.getElementById('el-voice');
+const langSelect    = document.getElementById('language-select');
 const saveBtn       = document.getElementById('settings-save-btn');
 const quitBtn       = document.getElementById('settings-quit-btn');
 
@@ -601,6 +598,16 @@ function applyTTSToggle(tts) {
   elFields.classList.toggle('show', tts === 'elevenlabs');
 }
 
+function populateLanguageSelect() {
+  langSelect.innerHTML = '';
+  for (const language of LANGUAGES) {
+    const option = document.createElement('option');
+    option.value = language.value;
+    option.textContent = language.label;
+    langSelect.appendChild(option);
+  }
+}
+
 function setSettingsOpen(open) {
   settingsPanel.classList.toggle('show', open);
   syncOverlayInteractivity();
@@ -646,6 +653,7 @@ btnEleven.addEventListener('click', () => applyTTSToggle('elevenlabs'));
 saveBtn.addEventListener('click', async e => {
   e.stopPropagation();
   naviConfig.tts               = btnEleven.classList.contains('active') ? 'elevenlabs' : 'local';
+  naviConfig.language          = langSelect.value || 'auto';
   naviConfig.elevenLabsKey     = elKey.value.trim();
   naviConfig.elevenLabsVoiceId = elVoice.value.trim() || 'fS4RM86GDhM251CjumZM';
   naviConfig.visionProvider    = currentVision;
@@ -667,7 +675,7 @@ window.navi.onHotkeyDismiss(() => {
   }
   setState(State.IDLE);
   transcript.classList.remove('show');
-  window.speechSynthesis?.cancel();
+  window.navi.stopSystemSpeech();
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -808,6 +816,7 @@ function encodeWAVtoBase64(samples, sampleRate) {
 // ─────────────────────────────────────────────────────────────────────────
 async function handleVoiceQuery(question) {
   if (!question) { setState(State.IDLE); return; }
+  currentSpeechLang = getTtsLang(naviConfig.language || 'auto', question, 'en-US');
 
   setState(State.THINK);
   statusText.textContent = `"${question.slice(0, 44)}${question.length > 44 ? '…' : ''}"`;
@@ -830,7 +839,7 @@ async function handleVoiceQuery(question) {
       flyToTarget(nx, ny, label, explanation, steps);
     } else {
       showBubble(result.raw, []);
-      speak(result.raw);
+      speak(result.raw, currentSpeechLang);
     }
   } catch (err) {
     console.error(err);
@@ -856,7 +865,7 @@ window.navi.onHotkeyDismiss(() => {  // legacy — handled above, kept for recor
     micStream?.getTracks().forEach(t => t.stop());
     syncOverlayInteractivity();
   }
-  window.speechSynthesis?.cancel();
+  window.navi.stopSystemSpeech();
 });
 
 micBtn.addEventListener('click', e => {
@@ -889,7 +898,7 @@ window.navi.onTranscriberStatus(status => {
     setState(State.IDLE);
     setTimeout(() => {
       showBubble("Hey! I'm Navi. Press Ctrl+F and ask me anything about your screen.", []);
-      speak("Hey! I'm Navi. Press Control F and ask me anything about your screen.");
+      speak("Hey! I'm Navi. Press Control F and ask me anything about your screen.", 'en-US');
       setTimeout(() => hideBubble(), 5000);
     }, 300);
   }
@@ -901,7 +910,9 @@ window.navi.onTranscriberStatus(status => {
 async function init() {
   // Load saved config
   naviConfig = await window.navi.getConfig();
+  populateLanguageSelect();
   applyTTSToggle(naviConfig.tts);
+  langSelect.value = naviConfig.language || 'auto';
   if (naviConfig.elevenLabsKey)     elKey.value   = naviConfig.elevenLabsKey;
   if (naviConfig.elevenLabsVoiceId) elVoice.value = naviConfig.elevenLabsVoiceId;
   applyVisionToggle(naviConfig.visionProvider || 'ollama');
