@@ -306,6 +306,11 @@
   </div>
 
   <div class="settings-row" style="margin-top:10px">
+    <div class="settings-label">Language</div>
+    <select class="settings-input" id="language-select"></select>
+  </div>
+
+  <div class="settings-row" style="margin-top:10px">
     <div class="settings-label">Voice</div>
     <div class="tts-toggle">
       <button class="tts-btn active" id="btn-local">Local (browser)</button>
@@ -330,14 +335,17 @@
   <button id="settings-btn" title="Settings">⚙</button>
 </div>
 
+<script src="./language-options.js"></script>
 <script>
 // ─────────────────────────────────────────────────────────────────────────
 // State
 // ─────────────────────────────────────────────────────────────────────────
+const { LANGUAGES, getTtsLang } = window.NaviLanguageOptions;
 const State = { IDLE: 'idle', LISTEN: 'listen', THINK: 'think', GUIDE: 'guide' };
 let state = State.IDLE;
 let whisperReady = false;
 let autoDismissTimer = null;
+let currentSpeechLang = null;
 
 let bx = window.innerWidth / 2;
 let by = window.innerHeight - 120;
@@ -474,7 +482,7 @@ function flyToTarget(nx, ny, label, explanation, steps) {
   setTimeout(() => {
     hereLabel.classList.add('show');
     showBubble(explanation, steps);
-    speak(explanation);
+    speak(explanation, currentSpeechLang);
 
     // Auto-dismiss after 5 seconds — buddy follows cursor again
     clearTimeout(autoDismissTimer);
@@ -486,22 +494,17 @@ function hideGuide() { targetDot.classList.remove('show'); hereLabel.classList.r
 // ─────────────────────────────────────────────────────────────────────────
 // TTS — local or ElevenLabs depending on config
 // ─────────────────────────────────────────────────────────────────────────
-let naviConfig = { tts: 'local', elevenLabsKey: '', elevenLabsVoiceId: 'fS4RM86GDhM251CjumZM' };
+let naviConfig = { tts: 'local', language: 'auto', elevenLabsKey: '', elevenLabsVoiceId: 'fS4RM86GDhM251CjumZM' };
 
-function speakLocal(text) {
-  if (!window.speechSynthesis) return;
-  window.speechSynthesis.cancel();
-  const utt = new SpeechSynthesisUtterance(text);
-  utt.rate = 1.05;
-  const voices = speechSynthesis.getVoices();
-  const preferred = voices.find(v => v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Zira'));
-  if (preferred) utt.voice = preferred;
-  window.speechSynthesis.speak(utt);
+async function speakLocal(text, preferredLang = null) {
+  const lang = preferredLang || getTtsLang(naviConfig.language || 'auto', text, 'en-US');
+  const res = await window.navi.speakSystem(text, lang);
+  if (!res?.success) console.warn('System TTS failed:', res?.error);
 }
 
-async function speakElevenLabs(text) {
+async function speakElevenLabs(text, preferredLang = null) {
   const res = await window.navi.speakElevenLabs(text, naviConfig.elevenLabsKey, naviConfig.elevenLabsVoiceId);
-  if (!res.success) { speakLocal(text); return; } // fallback to local on error
+  if (!res.success) { speakLocal(text, preferredLang); return; } // fallback to local on error
   const bytes = Uint8Array.from(atob(res.audio), c => c.charCodeAt(0));
   const blob  = new Blob([bytes], { type: 'audio/mpeg' });
   const url   = URL.createObjectURL(blob);
@@ -510,11 +513,11 @@ async function speakElevenLabs(text) {
   audio.onended = () => URL.revokeObjectURL(url);
 }
 
-function speak(text) {
+function speak(text, preferredLang = null) {
   if (naviConfig.tts === 'elevenlabs' && naviConfig.elevenLabsKey) {
-    speakElevenLabs(text);
+    speakElevenLabs(text, preferredLang);
   } else {
-    speakLocal(text);
+    speakLocal(text, preferredLang);
   }
 }
 
@@ -528,6 +531,7 @@ const btnEleven     = document.getElementById('btn-eleven');
 const elFields      = document.getElementById('elevenlabs-fields');
 const elKey         = document.getElementById('el-key');
 const elVoice       = document.getElementById('el-voice');
+const langSelect    = document.getElementById('language-select');
 const saveBtn       = document.getElementById('settings-save-btn');
 const quitBtn       = document.getElementById('settings-quit-btn');
 
@@ -590,6 +594,16 @@ function applyTTSToggle(tts) {
   elFields.classList.toggle('show', tts === 'elevenlabs');
 }
 
+function populateLanguageSelect() {
+  langSelect.innerHTML = '';
+  for (const language of LANGUAGES) {
+    const option = document.createElement('option');
+    option.value = language.value;
+    option.textContent = language.label;
+    langSelect.appendChild(option);
+  }
+}
+
 function toggleSettings() {
   const opening = !settingsPanel.classList.contains('show');
   settingsPanel.classList.toggle('show', opening);
@@ -609,6 +623,7 @@ btnEleven.addEventListener('click', () => applyTTSToggle('elevenlabs'));
 saveBtn.addEventListener('click', async e => {
   e.stopPropagation();
   naviConfig.tts               = btnEleven.classList.contains('active') ? 'elevenlabs' : 'local';
+  naviConfig.language          = langSelect.value || 'auto';
   naviConfig.elevenLabsKey     = elKey.value.trim();
   naviConfig.elevenLabsVoiceId = elVoice.value.trim() || 'fS4RM86GDhM251CjumZM';
   naviConfig.visionProvider    = currentVision;
@@ -632,7 +647,7 @@ window.navi.onHotkeyDismiss(() => {
   }
   setState(State.IDLE);
   transcript.classList.remove('show');
-  window.speechSynthesis?.cancel();
+  window.navi.stopSystemSpeech();
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -773,6 +788,7 @@ function encodeWAVtoBase64(samples, sampleRate) {
 // ─────────────────────────────────────────────────────────────────────────
 async function handleVoiceQuery(question) {
   if (!question) { setState(State.IDLE); return; }
+  currentSpeechLang = getTtsLang(naviConfig.language || 'auto', question, 'en-US');
 
   setState(State.THINK);
   statusText.textContent = `"${question.slice(0, 44)}${question.length > 44 ? '…' : ''}"`;
@@ -795,7 +811,7 @@ async function handleVoiceQuery(question) {
       flyToTarget(nx, ny, label, explanation, steps);
     } else {
       showBubble(result.raw, []);
-      speak(result.raw);
+      speak(result.raw, currentSpeechLang);
     }
   } catch (err) {
     console.error(err);
@@ -816,7 +832,7 @@ window.navi.onHotkeyToggle(() => {
 
 window.navi.onHotkeyDismiss(() => {  // legacy — handled above, kept for recording cleanup
   if (isRecording) { isRecording = false; scriptProc?.disconnect(); micStream?.getTracks().forEach(t => t.stop()); }
-  window.speechSynthesis?.cancel();
+  window.navi.stopSystemSpeech();
 });
 
 micBtn.addEventListener('click', e => {
@@ -841,7 +857,7 @@ window.navi.onTranscriberStatus(status => {
     setState(State.IDLE);
     setTimeout(() => {
       showBubble("Hey! I'm Navi. Press Ctrl+F and ask me anything about your screen.", []);
-      speak("Hey! I'm Navi. Press Control F and ask me anything about your screen.");
+      speak("Hey! I'm Navi. Press Control F and ask me anything about your screen.", 'en-US');
       setTimeout(() => hideBubble(), 5000);
     }, 300);
   }
@@ -853,7 +869,9 @@ window.navi.onTranscriberStatus(status => {
 async function init() {
   // Load saved config
   naviConfig = await window.navi.getConfig();
+  populateLanguageSelect();
   applyTTSToggle(naviConfig.tts);
+  langSelect.value = naviConfig.language || 'auto';
   if (naviConfig.elevenLabsKey)     elKey.value   = naviConfig.elevenLabsKey;
   if (naviConfig.elevenLabsVoiceId) elVoice.value = naviConfig.elevenLabsVoiceId;
   applyVisionToggle(naviConfig.visionProvider || 'ollama');
