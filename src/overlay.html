@@ -30,7 +30,7 @@
   /* ── BUDDY ──────────────────────────────────────────────────────────── */
   #buddy {
     position: fixed;
-    width: 52px; height: 52px;
+    width: 20px; height: 20px;
     pointer-events: none;
     z-index: 9000;
     transform: translate(-50%, -50%);
@@ -39,34 +39,26 @@
   }
 
   #buddy-ring {
-    position: absolute; inset: 0;
-    border-radius: 50%;
-    border: 2px solid var(--accent);
-    opacity: 0;
-  }
-  #buddy.guide #buddy-ring {
-    opacity: 1;
-    animation: ring-ping 1.2s ease-out infinite;
+    display: none;
   }
 
   #buddy-face {
-    position: absolute; inset: 4px;
-    background: var(--accent);
-    border-radius: 50%;
+    position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
-    font-size: 22px;
-    box-shadow: 0 0 18px var(--accent-glow), 0 4px 20px rgba(0,0,0,0.5);
-    transition: transform 0.15s ease, background 0.2s;
+    font-size: 18px;
+    line-height: 1;
+    color: var(--accent);
+    text-shadow: 0 0 10px var(--accent-glow), 0 2px 10px rgba(0,0,0,0.35);
+    transition: transform 0.15s ease, color 0.2s, text-shadow 0.2s;
   }
 
-  #buddy.idle   #buddy-face { background: var(--accent); }
-  #buddy.listen #buddy-face { background: var(--red); animation: pulse 0.8s ease-in-out infinite; }
-  #buddy.think  #buddy-face { background: #4af0c8; animation: glow 1.5s linear infinite; }
-  #buddy.guide  #buddy-face { background: var(--accent); }
+  #buddy.idle   #buddy-face { color: var(--accent); }
+  #buddy.listen #buddy-face { color: var(--red); animation: pulse 0.8s ease-in-out infinite; }
+  #buddy.think  #buddy-face { color: #4af0c8; animation: glow 1.5s linear infinite; }
+  #buddy.guide  #buddy-face { color: var(--accent); }
 
-  @keyframes pulse  { 0%,100%{transform:scale(1);box-shadow:0 0 18px rgba(255,90,90,.5)} 50%{transform:scale(1.08);box-shadow:0 0 32px rgba(255,90,90,.8)} }
-  @keyframes glow   { 0%,100%{box-shadow:0 0 20px rgba(74,240,200,.6)} 50%{box-shadow:0 0 40px rgba(74,240,200,.9)} }
-  @keyframes ring-ping { 0%{transform:scale(1);opacity:1} 100%{transform:scale(2.2);opacity:0} }
+  @keyframes pulse  { 0%,100%{transform:scale(1);text-shadow:0 0 8px rgba(255,90,90,.45), 0 2px 10px rgba(0,0,0,0.35)} 50%{transform:scale(1.12);text-shadow:0 0 14px rgba(255,90,90,.8), 0 2px 12px rgba(0,0,0,0.35)} }
+  @keyframes glow   { 0%,100%{transform:scale(1);text-shadow:0 0 8px rgba(74,240,200,.5), 0 2px 10px rgba(0,0,0,0.35)} 50%{transform:scale(1.1);text-shadow:0 0 14px rgba(74,240,200,.85), 0 2px 12px rgba(0,0,0,0.35)} }
 
   /* ── SPEECH BUBBLE ──────────────────────────────────────────────────── */
   #bubble {
@@ -99,11 +91,11 @@
   /* ── HERE LABEL ─────────────────────────────────────────────────────── */
   #here-label {
     position: fixed; pointer-events: none; z-index: 9001;
-    transform: translate(-50%, -130%);
-    background: var(--accent); color: #000;
-    font-size: 11px; font-weight: 500; letter-spacing: .05em;
-    padding: 4px 10px; border-radius: 20px; white-space: nowrap;
-    box-shadow: 0 0 20px var(--accent-glow), 0 4px 12px rgba(0,0,0,.4);
+    transform: translate(8px, -50%);
+    background: var(--think); color: #fff;
+    font-size: 10px; font-weight: 700; letter-spacing: .01em;
+    padding: 4px 8px; border-radius: 5px; white-space: nowrap;
+    box-shadow: 0 0 12px rgba(74,163,255,.45), 0 3px 10px rgba(0,0,0,.4);
     opacity: 0;
     transition: opacity .2s, left .4s cubic-bezier(0.22,1,0.36,1), top .4s cubic-bezier(0.22,1,0.36,1);
   }
@@ -373,7 +365,7 @@ const ollamaWarn = document.getElementById('ollama-warn');
 })();
 
 document.addEventListener('mousemove', e => {
-  if (isFollowingMouse) { targetBx = e.clientX + 44; targetBy = e.clientY - 20; }
+  if (isFollowingMouse) { targetBx = e.clientX + 28; targetBy = e.clientY + 28; }
 });
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -396,7 +388,7 @@ function setState(s) {
       break;
 
     case State.LISTEN:
-      buddyFace.textContent = '🎙';
+      buddyFace.textContent = '✦';
       statusDot.className = 'red';
       statusText.textContent = 'listening… press Ctrl+F to send';
       micBtn.classList.add('active');
@@ -404,7 +396,7 @@ function setState(s) {
       break;
 
     case State.THINK:
-      buddyFace.textContent = '◌';
+      buddyFace.textContent = '✦';
       statusDot.className = 'teal';
       micBtn.classList.remove('active');
       break;
@@ -461,19 +453,16 @@ function flyToTarget(nx, ny, label, explanation, steps) {
   const W = window.innerWidth, H = window.innerHeight;
   const px = nx * W, py = ny * H;
 
-  targetBx = px; targetBy = py - 60;
+  targetBx = px; targetBy = py;
 
-  targetDot.style.left = px + 'px';
-  targetDot.style.top  = py + 'px';
-  targetDot.classList.add('show');
+  targetDot.classList.remove('show');
 
-  hereLabel.textContent  = label || 'Here!';
-  hereLabel.style.left   = px + 'px';
-  hereLabel.style.top    = (py - 10) + 'px';
+  hereLabel.textContent  = label || 'found it!';
+  hereLabel.style.left   = (targetBx + 12) + 'px';
+  hereLabel.style.top    = targetBy + 'px';
 
   setTimeout(() => {
     hereLabel.classList.add('show');
-    showBubble(explanation, steps);
     speak(explanation);
 
     // Auto-dismiss after 5 seconds — buddy follows cursor again
