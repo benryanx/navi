@@ -7,7 +7,7 @@
   root.NaviLanguageOptions = factory();
 })(typeof globalThis !== 'undefined' ? globalThis : this, function () {
   const ENGLISH_MODEL = 'Xenova/whisper-base.en';
-  const MULTILINGUAL_MODEL = 'Xenova/whisper-base';
+  const MULTILINGUAL_MODEL = 'Xenova/whisper-small';
 
   const LANGUAGES = [
     { value: 'auto', label: 'Auto', ttsLang: '', whisperLanguage: null, model: MULTILINGUAL_MODEL },

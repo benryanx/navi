@@ -504,7 +504,11 @@ async function speakLocal(text, preferredLang = null) {
 
 async function speakElevenLabs(text, preferredLang = null) {
   const res = await window.navi.speakElevenLabs(text, naviConfig.elevenLabsKey, naviConfig.elevenLabsVoiceId);
-  if (!res.success) { speakLocal(text, preferredLang); return; } // fallback to local on error
+  if (!res.success) {
+    console.warn('ElevenLabs TTS failed; falling back to local TTS:', res.error);
+    speakLocal(text, preferredLang);
+    return;
+  }
   const bytes = Uint8Array.from(atob(res.audio), c => c.charCodeAt(0));
   const blob  = new Blob([bytes], { type: 'audio/mpeg' });
   const url   = URL.createObjectURL(blob);
